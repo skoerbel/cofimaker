@@ -1918,10 +1918,12 @@ c---------------------------------------------------------------------
      &             dos_tol)
       use defs
       use readcoords
-      use misc, only : theta_function
+      use misc, only : theta_function,string2words,finegrid,broaden
       implicit none 
       character*1024 :: eigenval,procar,outcar,doscar,line,xtics
-      character filename*256,filename2*256, string*256
+      character filename*256,filename2*256, string*256,cdum*128
+      character line2*1024
+      character (len=1024), allocatable :: words(:)
       integer nlayers,direction
       double precision origin,xstart,xend
       integer nbands,iband,nkpoints,ikpoint,nele,iline,idum
@@ -1935,12 +1937,17 @@ c---------------------------------------------------------------------
       double precision, allocatable :: dos_tot(:,:)
       double precision, allocatable :: dos_lp(:,:)
       double precision, allocatable :: dos_lp_proj(:,:,:,:)
-      double precision, allocatable :: dos_proj(:,:,:,:)
+      double precision, allocatable :: dos_proj(:,:,:,:),dos_k(:,:,:,:)
+      double precision, allocatable :: dos_k_grid(:),dos_k_val_up(:),     &
+     &     dos_k_val_down(:),dos_k_val_up_sum(:),dos_k_val_down_sum(:),   &
+     &     dos_k_val_up_broad(:),dos_k_val_down_broad(:),                 &
+     &     dos_k_val_up_sum_broad(:),dos_k_val_down_sum_broad(:),         &
+     &     jdos_direct(:),jdos_k(:)
 !      double precision, allocatable :: proj_up(:,:,:,:)
 !      double precision, allocatable :: proj_ele_up(:,:,:,:)
 !      double precision, allocatable :: proj_down(:,:,:,:)
 !      double precision, allocatable :: proj_ele_down(:,:,:,:)
-      double precision, allocatable :: k(:,:),svec(:)
+      double precision, allocatable :: k(:,:),svec(:),kweights(:)
       double precision s,tol,efermi,vecs(1:3,1:3),fdum,jdos_tot(1:2)
       double precision tot_dos_lp_proj_1,tot_dos_lp_proj_2,dos_tol
       logical have_vbm,have_cbm
@@ -2017,7 +2024,7 @@ c---------------------------------------------------------------------
       ! allocate projected dos (atoms, energies, total s px py pz d1 d2 d3 d4 d5 , spin)
       allocate(dos_proj(1:natoms,1:numener,0:9,1:2))
       allocate(energies(numener))
-      ! red total dos:
+      ! read total dos:
       do iener=1,numener
         read(51,*) energies(iener),dos_tot(iener,1:ispin)
         energies(iener)=energies(iener)-efermi
@@ -2043,6 +2050,344 @@ c---------------------------------------------------------------------
       close(51)
       !
       ! end read dos
+      !
+      ! begin read DOS(k) from PROCAR
+      !
+      open(51,file=procar,status="old", err=100)
+      rewind(51) 
+      read(51,*) line ! first line
+      read(51,*) cdum,cdum,cdum, nkpoints,cdum,cdum,cdum,nbands ! 2nd line
+      print '(8x,"nkpoints=",I0,", nbands=",I0)',nkpoints, nbands
+      allocate(k(1:nkpoints,1:3),kweights(nkpoints))
+      allocate(eigenvalues_up(nkpoints,nbands))
+      if(.not.spinpol) allocate(dos_k(nkpoints,nbands,1:10,1))
+      if(spinpol) allocate(dos_k(nkpoints,nbands,1:10,2))
+      if(spinpol) allocate(eigenvalues_down(nkpoints,nbands))
+      do ikpoint=1,nkpoints
+        read(51,'(A256)',err=100, end=100) line ! empty line
+        !print*,"line0=",line
+        read(51,'(A256)',err=100, end=100) line ! line with k-point coordinates
+        !print*,"line1=",line
+        line2=""
+        iwrite=1
+        do idum=index(line,":")+1,index(line,"weight")-1
+          if (line(idum:idum).eq."-") then 
+            write(line2(iwrite:iwrite+1),'(" ",A1)') line(idum:idum)
+            iwrite=iwrite+2
+          else
+            write(line2(iwrite:iwrite),'(A1)') line(idum:idum)
+            iwrite=iwrite+1
+          end if
+          !print*,"line2=", line2
+        end do
+        read(line(idum+9:),*) kweights(ikpoint)
+        line2=trim(adjustl(trim(adjustl(line2))))
+        call string2words(trim(adjustl(line2)),words)
+        read(words(1),*) k(ikpoint,1)
+        read(words(2),*) k(ikpoint,2)
+        read(words(3),*) k(ikpoint,3)
+        print '(8x,"kpoint # ",I0, " coordinates ",3(F12.6,1x),           &
+     &   ", weight ",F12.6)',ikpoint,k(ikpoint,1:3),kweights(ikpoint)
+        do iband=1,nbands
+          read(51,'(A256)',err=100, end=100) line ! empty line
+          read(51,*,err=100, end=100) cdum,cdum,cdum,cdum,                &
+     &           eigenvalues_up(ikpoint,iband)
+!          print '(8x,"band # ",I0, " energy ",F12.6)',                    &
+!     &         iband,eigenvalues_up(ikpoint,iband)
+          read(51,'(A256)',err=100, end=100) line ! empty line
+          read(51,*,err=100, end=100) line ! header line (ion  s ...)
+          do iline=1,natoms
+            read(51,*,err=100, end=100) line
+          end do
+          read(51,*,err=100, end=100) cdum,dos_k(ikpoint,iband,1:10,1)
+          !print '(8x," dos_tot ",F12.6)', dos_k(ikpoint,iband,10,1)
+          ! if noncollinear, we have the total DOS first, then the 3
+          ! magnetization directions. The latter are ignored here.
+          if(noncollinear) then
+            do iline=1,natoms
+              read(51,*,err=100, end=100) line
+            end do
+            read(51,*,err=100, end=100) line
+            do iline=1,natoms
+              read(51,*,err=100, end=100) line
+            end do
+            read(51,*,err=100, end=100) line
+            do iline=1,natoms
+              read(51,*,err=100, end=100) line
+            end do
+            read(51,*,err=100, end=100) line
+          end if ! noncollinear
+        end do ! iband
+        read(51,'(A256)',err=100, end=100) line ! empty line
+      end do ! ikpoint
+      if (spinpol) then
+        print '(8x,"same for spin down")'
+        read(51,*,err=100, end=100) line 
+        do ikpoint=1,nkpoints
+          read(51,'(A256)',err=100, end=100) line ! empty line
+          read(51,'(A256)',err=100, end=100) line ! line with k-point coordinates. We know these already
+          do iband=1,nbands
+            read(51,*,err=100, end=100) cdum,cdum,cdum,cdum,              &
+     &               eigenvalues_down(ikpoint,iband)
+!            print '(8x,"band # ",I0, " energy ",F12.6)',                  &
+!     &         iband,eigenvalues_down(ikpoint,iband)
+            read(51,'(A256)',err=100, end=100) line ! empty line
+            read(51,*,err=100, end=100) line
+            do iline=1,natoms
+              read(51,*,err=100, end=100) line
+            end do
+            read(51,*,err=100, end=100) cdum,dos_k(ikpoint,iband,1:10,2)
+            !print '(8x," dos_tot ",F12.6)', dos_k(ikpoint,iband,10,2)
+          end do ! iband
+          read(51,'(A256)',err=100, end=100) line ! empty line
+        end do ! ikpoint
+      end if ! spinpol
+      close(51)
+      !
+      ! end read DOS(k) from PROCAR
+      !
+      ! begin map total DOS-k to equidistant grid
+      !
+      allocate(dos_k_val_up_sum(numener))
+      allocate(dos_k_val_up_sum_broad(numener))
+      allocate(jdos_direct(numener),jdos_k(numener))
+      dos_k_val_up_sum=0.0d0
+      dos_k_val_up_sum_broad=0.0d0
+      jdos_direct=0.0d0
+      do ikpoint=1,nkpoints
+         call finegrid(eigenvalues_up(ikpoint,1:nbands),                  &
+     &              dos_k(ikpoint,1:nbands,10,1),energies(1)+efermi,      &
+     &              energies(numener)+efermi,                             &
+     &              (energies(numener)-energies(1))/dble(numener-1),      &
+     &              dos_k_grid,dos_k_val_up)
+         ! write unbroadened k-DOS  
+         filename=""
+         write(filename,'("DOS_UP_KPOINT_",I0,".DAT")') ikpoint 
+         open(51,file=filename,status='replace')
+         do iener=1,numener
+           write(51,'(2(F12.6,1x))') dos_k_grid(iener)-efermi,            &
+     &       dos_k_val_up(iener)  
+         end do ! iener
+         close(51)
+         call broaden(dos_k_grid,dos_k_val_up,0.025d0,.false.,0.0D0,      &
+     &        dos_k_val_up_broad)
+         ! write broadened k-DOS  
+         filename=""
+         write(filename,'("DOS_UP_KPOINT_",I0,"_BROAD.DAT")') ikpoint 
+         open(51,file=filename,status='replace')
+         do iener=1,numener
+           write(51,'(2(F12.6,1x))') dos_k_grid(iener)-efermi,            &
+     &       dos_k_val_up_broad(iener)  
+         end do ! iener
+         close(51)
+         !
+         ! begin k-JDOS up 
+         !
+         filename=""
+         write(filename,'("JDOS_UP_KPOINT_",I0,".DAT")') ikpoint 
+         open(51,file=filename, status="replace")
+         delta_E=(energies(numener)-energies(1))/(dble(numener-1))
+         jdos_k=0.0d0
+         do iener=1,numener
+           do jener=1,numener-iener+1
+             kener=jener+iener-1
+             jdos_k(iener)=jdos_k(iener)+dos_k_val_up_broad(jener)        &
+     &         *theta_function(-energies(jener))                          &
+     &         *dos_k_val_up_broad(kener)                                 &
+     &         *theta_function(energies(kener))*delta_E                
+           end do! jener
+           write(51,'(2(F20.6))') energies(iener)-energies(1),            &
+     &       jdos_k(iener)
+         end do ! iener
+         close(51)
+         !
+         ! end k-JDOS up
+         !
+         dos_k_val_up_sum(:)=dos_k_val_up_sum(:)                          &
+     &                          +dos_k_val_up(:)*kweights(ikpoint)
+         dos_k_val_up_sum_broad(:)=dos_k_val_up_sum_broad(:)              &
+     &                          +dos_k_val_up_broad(:)*kweights(ikpoint)
+         jdos_direct(:)=jdos_direct(:)+jdos_k(:)*kweights(ikpoint)
+      end do  ! ikpoint
+      !
+      ! write total DOS (to compare with DOS_TOT, should be the same
+      ! except for missing broadening):
+      filename=""
+      write(filename,'("DOS_UP_KPOINTS_SUM.DAT")') 
+      open(51,file=filename,status='replace')
+      do iener=1,numener
+        write(51,'(2(F12.6,1x))') dos_k_grid(iener)-efermi,               &
+     &    dos_k_val_up_sum(iener)  
+      end do ! iener
+      close(51)
+      !
+      ! write total DOS (to compare with DOS_TOT, should be the same):
+      filename=""
+      write(filename,'("DOS_UP_KPOINTS_SUM_BROAD.DAT")') 
+      open(51,file=filename,status='replace')
+      do iener=1,numener
+        write(51,'(2(F12.6,1x))') dos_k_grid(iener)-efermi,               &
+     &    dos_k_val_up_sum_broad(iener)  
+      end do ! iener
+      close(51)
+      !
+      ! write total JDOS (to compare with JDOS_TOT, should be the same
+      ! if there is no k-point dispersion):
+      filename=""
+      write(filename,'("JDOS_UP_DIRECT.DAT")') 
+      open(51,file=filename,status='replace')
+      do iener=1,numener
+        write(51,'(2(F12.6,1x))') energies(iener)-energies(1),            &
+     &    jdos_direct(iener)  
+      end do ! iener
+      close(51)
+      !
+      ! begin the same for spin down:
+      !
+      if (spinpol) then
+        allocate(dos_k_val_down_sum(numener))
+        allocate(dos_k_val_down_sum_broad(numener))
+        dos_k_val_down_sum=0.0d0
+        dos_k_val_down_sum_broad=0.0d0
+        jdos_direct=0.0d0
+        do ikpoint=1,nkpoints
+          call finegrid(eigenvalues_down(ikpoint,1:nbands),               &
+     &                dos_k(ikpoint,1:nbands,10,2),energies(1)+efermi,    &
+     &                energies(numener)+efermi,                           &
+     &                (energies(numener)-energies(1))/dble(numener-1),    &
+     &                dos_k_grid,dos_k_val_down)
+           ! write unbroadened k-DOS  
+           filename=""
+           write(filename,'("DOS_DOWN_KPOINT_",I0,".DAT")') ikpoint 
+           open(51,file=filename,status='replace')
+           do iener=1,numener
+             write(51,'(2(F12.6,1x))') dos_k_grid(iener)-efermi,          &
+     &         dos_k_val_down(iener)  
+           end do ! iener
+           close(51)
+           call broaden(dos_k_grid,dos_k_val_down,0.025d0,.false.,0.0D0,  &
+     &        dos_k_val_down_broad)
+           ! write broadened k-DOS  
+           filename=""
+           write(filename,'("DOS_DOWN_KPOINT_",I0,"_BROAD.DAT")')ikpoint
+           open(51,file=filename,status='replace')
+           do iener=1,numener
+             write(51,'(2(F12.6,1x))') dos_k_grid(iener)-efermi,          &
+     &         dos_k_val_down_broad(iener)  
+           end do ! iener
+           close(51)
+           !
+           ! begin k-JDOS down
+           !
+           filename=""
+           write(filename,'("JDOS_DOWN_KPOINT_",I0,".DAT")') ikpoint 
+           open(51,file=filename, status="replace")
+           delta_E=(energies(numener)-energies(1))/(dble(numener-1))
+           jdos_k=0.0d0
+           do iener=1,numener
+             do jener=1,numener-iener+1
+               kener=jener+iener-1
+               jdos_k(iener)=jdos_k(iener)+dos_k_val_down_broad(jener)    &
+     &           *theta_function(-energies(jener))                        &
+     &           *dos_k_val_down_broad(kener)                             &
+     &           *theta_function(energies(kener))*delta_E               
+             end do! jener
+             write(51,'(3(F20.6))') energies(iener)-energies(1),          &
+     &         jdos_k(iener)
+           end do ! iener
+           close(51)
+           !
+           ! end k-JDOS up
+           !
+           dos_k_val_down_sum(:)=dos_k_val_down_sum(:)                    &
+     &                           +dos_k_val_down(:)*kweights(ikpoint) 
+           dos_k_val_down_sum_broad(:)=dos_k_val_down_sum_broad(:)        &
+     &                        +dos_k_val_down_broad(:)*kweights(ikpoint)
+           jdos_direct(:)=jdos_direct(:)+jdos_k(:)*kweights(ikpoint)
+        end do  ! ikpoint
+        !
+        ! write total DOS (to compare with DOS_TOT, should be the same
+        ! except for missing broadening):
+        filename=""
+        write(filename,'("DOS_DOWN_KPOINTS_SUM.DAT")') 
+        open(51,file=filename,status='replace')
+        do iener=1,numener
+          write(51,'(2(F12.6,1x))') dos_k_grid(iener)-efermi,             &
+     &      dos_k_val_down_sum(iener)  
+        end do ! iener
+        close(51)
+        !
+        ! write total DOS (to compare with DOS_TOT, should be the same):
+        filename=""
+        write(filename,'("DOS_DOWN_KPOINTS_SUM_BROAD.DAT")') 
+        open(51,file=filename,status='replace')
+        do iener=1,numener
+          write(51,'(2(F12.6,1x))') dos_k_grid(iener)-efermi,             &
+     &      dos_k_val_down_sum_broad(iener)  
+        end do ! iener
+        close(51)
+        !
+        ! write total JDOS (to compare with JDOS_TOT, should be the same
+        ! if there is no k-point dispersion):
+        filename=""
+        write(filename,'("JDOS_DOWN_DIRECT.DAT")') 
+        open(51,file=filename,status='replace')
+        do iener=1,numener
+          write(51,'(2(F12.6,1x))') energies(iener)-energies(1),          &
+     &      jdos_direct(iener)  
+        end do ! iener
+        close(51)
+      end if ! spinpol
+      !
+      ! end the same for spin down
+      !
+      ! end map DOS-k to equidistant grid
+      !
+!
+!      read(51,*,end=100,err=100) idum,idum,idum, idum  
+!      if (idum==2) spinpol=.true.   
+!      do iline=1,4
+!        read(51,'(A1024)',end=100,err=100) line    
+!      end do
+!      read(51,*,end=100,err=100) nele,nkpoints,nbands
+!      !print '(8x,3(1x,I0))',nele,nkpoints,nbands
+!      allocate(k(1:nkpoints,1:3),eigenvalues_up(nkpoints,nbands))
+!      allocate(proj_up(nkpoints,nbands,natoms,1:10))
+!      allocate(proj_ele_up(nkpoints,nbands,nspecies,1:10))
+!      proj_ele_up(1:nkpoints,1:nbands,1:nspecies,1:10)=0.0d0
+!      allocate(svec(1:nkpoints))
+!      svec=0.0d0
+!      if (spinpol) then
+!        allocate(eigenvalues_down(nkpoints,nbands))
+!        allocate(proj_down(nkpoints,nbands,natoms,1:10))
+!        allocate(proj_ele_down(nkpoints,nbands,nspecies,1:10))
+!        proj_ele_down(1:nkpoints,1:nbands,1:nspecies,1:10)=0.0d0
+!      end if
+!      !
+!      ! end read nbands, nkpoints
+!      !
+!      !
+!      ! begin read kpoints and eigenvalues
+!      !    
+!      do ikpoint=1,nkpoints
+!        read(51,'(A1024)',end=100,err=100) line    
+!        read(51,*,end=100,err=100) k(ikpoint,1:3)
+!        do iband=1,nbands
+!          if (.not.spinpol) then
+!            read(51,*,err=100,end=100) idum,                              &
+!     &         eigenvalues_up(ikpoint,iband)
+!          else
+!            read(51,*,err=100,end=100) idum,                              &
+!     &         eigenvalues_up(ikpoint,iband),                             &
+!     &         eigenvalues_down(ikpoint,iband)
+!          end if
+!        end do
+!      end do
+!      close(51)
+!      !
+!      ! end read kpoints and eigenvalues
+!      !
+      !
       !
       ! begin print DOS
       !
@@ -2894,6 +3239,7 @@ c---------------------------------------------------------------------
       close(51)
       nerr=nerr+1
       print ferrmssg,'Problem with PROCAR file'
+      return
       !
 101   continue    
       close(51)
@@ -3812,10 +4158,10 @@ c---------------------------------------------------------------------
       print '(8x,"atomic positions and lattice vectors read in.")'
 
       print '(8x,"Cutting out a sphere at fractional position ",          &
-     &     3(F12.6)))', origin
+     &     3(F12.6))', origin
       origin=matmul(transpose(vecs),origin)
       print '(8x,"Cutting out a sphere at absolute position ",            &
-     &     3(F12.6)))', origin
+     &     3(F12.6))', origin
       print '(8x,"Cutting out a sphere with radius ",F12.6," Angs")',     &
      &     radius
       !
@@ -6280,8 +6626,8 @@ c---------------------------------------------------------------------
       subroutine vasp_eps2_from_WAVEDER(nomega,omega_min,omega_max,       &
      &           sigma,vbands,cbands,spins,kpoints, smearing)
       ! 
-      ! reads binary vasp output file WAVEDER and prints content to a formatted
-      ! file WAVEDER.dat
+      ! reads binary vasp output file WAVEDER and calculates epsilon2
+      ! from the matrix elements 
       !  
       use defs, only : fsubstart,fsubendext,error_stop,pi,ec,bohr,Ryd
       use misc, only : fermi_dist,delta_function_fermi

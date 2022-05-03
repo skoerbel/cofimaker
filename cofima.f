@@ -682,7 +682,8 @@ c---------------------------------------------------------------------
                  read(axischar(1:20),*) axisint
                  call get_command_argument(i,cutchar)
                  read(cutchar(1:20),*) cuthere
-                 if(abovechar.eq."sphere") then
+                 if(abovechar.eq."sphere".or.abovechar.eq.'SPHERE'.or.    &
+     &              abovechar.eq."plane".or.abovechar.eq."PLANE") then
                    i=i+1
                    call get_command_argument(i,cutchar)
                    read(cutchar(1:20),*) shift(1)

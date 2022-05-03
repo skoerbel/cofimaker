@@ -178,7 +178,11 @@
      &   '                     to specify hdist, you need to specify ',
      &   '                     nndist first. hdist>0: absolute dist. ',
      &   '                     in Angs, hdist<0: fraction of former ',
-     &   '                     bondlength.'  
+     &   '                     bondlength.',
+     &   '  --cut file1 file2 format1 format2 plane 0/1 distance n1 n2 n  &
+     &3',
+     &   '                     remove atoms above(0)/below(1) of a plane  &
+     &with distance "distance" from origin and direction (n1,n2,n2)'  
         print '(a)',
      &   '  --deriv file1 deriv_mode',
      &   '                     calculates first derivative of second col
@@ -279,7 +283,7 @@
      &g ftmode (options: simple). Optional: number of qpoints nq, maximu  &
      &m q qmax'      
         print '(a)',
-     &   '  --fourier_1d file1 ftmode',
+     &   '  --fourier_1d_reverse file1 ftmode',
      &   '                     calculates reverse FT of 2nd column in fi  &
      &le1 using ftmode (options: simple)'      
         print '(a)',

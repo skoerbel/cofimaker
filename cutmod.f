@@ -164,6 +164,75 @@
      &           "Unknown parameter. Use 'above' or 'below'"     
               return
             end select
+      case("plane","PLANE")
+            nkeep=0
+            origin=origin(1)*vecs(1,:)+origin(2)*vecs(2,:)                &
+     &            +origin(3)*vecs(3,:)
+            select case(axisint)
+            case(0)
+              ! keep atoms below plane  
+              ! "radius" is now distance from plane
+              ! "origin" is now n1,n2,n3 (vector normal to plane)
+              do i=1,natoms
+                distvec=atoms(i)%abswhere
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.le.0) then
+                  nkeep=nkeep+1
+                end if
+              end do
+              nremove=natoms-nkeep
+              allocate(keepatoms(nkeep),rmatoms(nremove))
+              j=0
+              jrm=0
+              do i=1,natoms
+                distvec=atoms(i)%abswhere 
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.le.0) then
+                  j=j+1
+                  keepatoms(j)=atoms(i)
+                end if
+                if(dist.gt.0) then
+                  jrm=jrm+1
+                  rmatoms(jrm)=atoms(i)
+                end if
+              end do
+            case(1) 
+              ! keep atoms above plane 
+              do i=1,natoms
+                distvec=atoms(i)%abswhere 
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.gt.0) then
+                  nkeep=nkeep+1
+                end if
+              end do
+              nremove=natoms-nkeep
+              allocate(keepatoms(nkeep),rmatoms(nremove))
+              j=0
+              jrm=0
+              do i=1,natoms
+                distvec=atoms(i)%abswhere 
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.gt.0) then
+                  j=j+1
+                  keepatoms(j)=atoms(i)
+                end if
+                if(dist.le.0) then
+                  jrm=jrm+1
+                  rmatoms(jrm)=atoms(i)
+                end if
+              end do
+            case default
+              nerr=nerr+1
+              print ferrmssg, 
+     &           "Unknown parameter. Use 'above' or 'below'"
+              if(isopen12) write(12,ferrmssg) 
+     &           "Unknown parameter. Use 'above' or 'below'"     
+              return
+            end select
       case default
           nerr=nerr+1
           print ferrmssg, "Unknown parameter. Use 'above','below', or 's

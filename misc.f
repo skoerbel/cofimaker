@@ -2971,13 +2971,13 @@ c---------------------------------------------------------------------
       double precision broad,binwidth
 
       ! local variables
-      character line*256 
+      character line*256,chardum*128
       integer nroots,iroot,ifg,jfg
       double precision integ
       double precision, allocatable :: exens(:),oscis(:),exenfs(:), 
-     &               oscifs(:),oscifbrds(:)
+     &      oscifs(:),oscifbrds(:),tmom(:,:),tmomf(:,:),tmomf_temp(:)
       double precision, allocatable :: exent(:),oscit(:),exenft(:), 
-     &               oscift(:),oscifbrdt(:)
+     &      oscift(:),oscifbrdt(:),tmom_brd(:,:),tmom_brd_temp(:)
       logical singlets,triplets 
 
       print fsubstart, "spectrum"
@@ -2998,7 +2998,7 @@ c---------------------------------------------------------------------
         if(index(line,'No. of roots :').gt.0) then
           read(line(29:34),*) nroots
           if (.not. allocated(exens))allocate(exens(nroots),
-     &         exent(nroots),oscis(nroots),oscit(nroots))
+     &       exent(nroots),oscis(nroots),oscit(nroots),tmom(nroots,3))
           exens=0.0D0
           oscis=0.0D0
           exent=0.0D0
@@ -3011,12 +3011,18 @@ c---------------------------------------------------------------------
         if(singlets) then
           print '(8x,"Attempting to read singlet data.")'
           iroot=1
+          tmom=0.0d0
           do while (iroot.le.nroots)
             read(51,'(A256)',err=101,end=101) line
             if(index(line,'Root ').gt.0.and.index(line,'singlet').gt.0) 
      &      then
                 !read(line(43:53),*) exens(iroot)
                 read(line(index(line,'a.u.')+4:),*) exens(iroot)
+            end if
+            if(index(line,' Transition Moments    X ').gt.0) 
+     &      then
+                read(line(index(line,'X')+1:),*) tmom(iroot,1),chardum,   &
+     &          tmom(iroot,2),chardum,tmom(iroot,3)
             end if
             if(index(line,'Dipole Oscillator Strength').gt.0) then
               read(line(54:64),*) oscis(iroot)
@@ -3031,17 +3037,21 @@ c---------------------------------------------------------------------
           iroot=1
           do while (iroot.le.nroots)
             read(51,'(A256)',err=101,end=101) line
-            if(index(line,'Root ').gt.0.and.(index(line,'triplet')
-     &        .gt.0.or.index(line,' a ').gt.0)) 
-     &      then
-                read(line(43:53),*,err=101) exent(iroot)
-            end if
-            if(index(line,'Oscillator Strength').gt.0) then
-              if (index(line,'Spin forbidden').le.0) then
-                 read(line(54:64),*,err=101) oscit(iroot)
-              else  
+!            print*,line
+            if(index(line,'Root ').gt.0.and.(index(line,'triplet').gt.0)  &
+     &         ) then
+                read(line(index(line,'eV')-12:),*,err=101) exent(iroot)
+!            end if
+!            read(51,'(A256)',err=101,end=101) line
+!            read(51,'(A256)',err=101,end=101) line
+!            read(51,'(A256)',err=101,end=101) line
+!            if(index(line,'Oscillator Strength').gt.0) then
+!              if (index(line,'Spin forbidden').le.0) then
+!                 read(line(index(line,"trength")+10:),*,err=101)          &
+!     &             oscit(iroot)
+!              else  
                 oscit(iroot)=100.0d0 ! if zero due to spin, fake finite oscillator strength
-              end if
+!              end if
               iroot=iroot+1 
             end if
           end do
@@ -3051,9 +3061,11 @@ c---------------------------------------------------------------------
         ! singlets
         if(singlets) then
           open(51,file="SPECTRUM.SINGLETS.DAT",status="replace")
-          write(51,'("# trans, Excit. energy (eV), Oscill. strength")')
+          write(51,'("# trans, Excit. energy (eV), Oscill. strength, tra  &
+     &nsition moment")')
           do iroot=1,nroots
-            write(51,'(I10,2(F15.10))')iroot,exens(iroot),oscis(iroot)
+            write(51,'(I10,5(F15.10))')iroot,exens(iroot),oscis(iroot),   &
+     &         tmom(iroot,1:3)
           end do
           close(51)
         end if 
@@ -3072,8 +3084,23 @@ c---------------------------------------------------------------------
           call finegrid(exens,oscis,exens(1)-10.0D0*broad,
      &       exens(nroots)+10.0D0*broad,binwidth,
      &       exenfs,oscifs)
+          call finegrid(exens,tmom(:,1),exens(1)-10.0D0*broad,
+     &       exens(nroots)+10.0D0*broad,binwidth,
+     &       exenfs,tmomf_temp)
+          allocate(tmomf(size(tmomf_temp),3))
+          tmomf(:,1)=tmomf_temp
+          call finegrid(exens,tmom(:,2),exens(1)-10.0D0*broad,
+     &       exens(nroots)+10.0D0*broad,binwidth,
+     &       exenfs,tmomf_temp)
+          tmomf(:,2)=tmomf_temp
+          call finegrid(exens,tmom(:,3),exens(1)-10.0D0*broad,
+     &       exens(nroots)+10.0D0*broad,binwidth,
+     &       exenfs,tmomf_temp)
+          tmomf(:,3)=tmomf_temp
           open(51,file="SPECTRUM.SINGLETS.FINE.DAT",status="replace")
           write(51,'("# Excit. energy (eV), Oscill. strength")')
+          write(51,'("# Excit. energy (eV), Oscill. strength, transition  &
+     & moment")')
           do ifg=1,size(exenfs)
             ! integral over spectrum up to this energy:
             integ=0.0d0
@@ -3082,15 +3109,25 @@ c---------------------------------------------------------------------
      &            integ=integ+oscifs(jfg)
             end do    
             !write(51,'(2(F15.10))') exenfs(ifg),oscifs(ifg)
-            write(51,'(3(F15.10))') exenfs(ifg),oscifs(ifg),integ
+            write(51,'(6(F15.10))') exenfs(ifg),oscifs(ifg),integ,        &
+     &          tmomf(ifg,:)
           end do
           close(51)
         ! print distribution on fine grid with gaussian broadening
-          call broaden(exenfs,oscifs,broad,.false.,0.0D0,oscifbrds
-     &       )
+          call broaden(exenfs,oscifs,broad,.false.,0.0D0,oscifbrds)
+          call broaden(exenfs,tmomf(:,1),broad,.false.,0.0D0,             &
+     &        tmom_brd_temp)
+          allocate(tmom_brd(size(tmom_brd_temp),3))
+          tmom_brd(:,1)=tmom_brd_temp
+          call broaden(exenfs,tmomf(:,2),broad,.false.,0.0D0,             &
+     &        tmom_brd_temp)
+          tmom_brd(:,2)=tmom_brd_temp
+          call broaden(exenfs,tmomf(:,3),broad,.false.,0.0D0,             &
+     &        tmom_brd_temp)
+          tmom_brd(:,3)=tmom_brd_temp
           open(51,file="SPECTRUM.SINGLETS.BRD.DAT",status="replace")
           write(51,'("# Excit. energy (eV), Oscill. strength with Gaussi
-     &an broadnening by)",F10.7)')broad
+     &an broadening by ",F10.7," transition moment")') broad
           do ifg=1,size(exenfs)
             ! integral over spectrum up to this energy:
             integ=0.0d0
@@ -3099,8 +3136,8 @@ c---------------------------------------------------------------------
      &             *( erf((exenfs(ifg)-exenfs(jfg))/broad)
      &               -erf(-exenfs(jfg)/broad))
             end do    
-            write(51,'(3(F15.10))') exenfs(ifg),oscifbrds(ifg)*binwidth,
-     &           integ
+            write(51,'(6(F15.10))') exenfs(ifg),oscifbrds(ifg)*binwidth,
+     &           integ,tmom_brd(ifg,:)
           end do
           close(51)
         end if
@@ -3439,6 +3476,8 @@ c---------------------------------------------------------------------
       print '(8x,"coarse grid dim.:",I10)',dimcgrid
       print '(8x,"fine grid dim.:",I10)',dimfgrid
       !if(dimfgrid.lt.dimcgrid) goto 100
+      if (allocated(fgrid)) deallocate(fgrid)
+      if (allocated(fval)) deallocate(fval)
       allocate(fgrid(dimfgrid),fval(dimfgrid))
       ! set up fine grid
       do ifgrid=1,dimfgrid
@@ -3468,7 +3507,7 @@ c---------------------------------------------------------------------
       !do ifgrid=1,dimfgrid
       !  print*,fgrid(ifgrid),fval(ifgrid)
       !end do
-      print fsubend
+      print fsubendext,'finegrid'
       return
 
 ! Error messages     
@@ -3501,6 +3540,7 @@ c-------------------------------------------------------------------------------
       print '(8x,"broadening by ",F15.10)',brd
       dimgrid=size(grid)
       if (size(val).ne.dimgrid) goto 100
+      if (allocated(brdval)) deallocate(brdval)
       allocate(brdval(dimgrid))
       
       ! broaden distribution
@@ -3539,7 +3579,7 @@ c-------------------------------------------------------------------------------
       end do
       intbrd=intbrd+brdval(dimgrid)*(grid(dimgrid)-grid(dimgrid-1))
       print '(8x,"Integ. over broadened distr.:",F15.5)',intbrd
-      print fsubend
+      print fsubendext,'broaden'
       return
 
 ! Error messages
