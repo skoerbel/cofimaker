@@ -306,11 +306,13 @@ c---------------------------------------------------------------------
 c---------------------------------------------------------------------
      
       subroutine madelen1(cell,charge,epsil)
+      ! calculate the screened madelung energy for a lattice of point
+      ! charges with Z=1 in a homogeneously charged background.
+      ! Formula from Rurali & Cartoixa, Nano Lett. 9, 975
+      ! (2009); Murphy & Hine, PRB 87, 094111 (2013)
       use defs
       use misc
       implicit none
-      ! calculates the madelung energy for some point charge lattices in
-      ! a homogeneous background charge  
       double precision, intent(in) :: cell(1:3,1:3),charge,
      &                                epsil(1:3,1:3) ! lattice vectors, point charge, epsilon tensor
       ! internal variables
@@ -321,7 +323,9 @@ c---------------------------------------------------------------------
      &        gabs,vol,r_ws,epsil1(1:3,1:3),det_eps
       double precision r_epsil1(1:3),sqrt_r_epsil1_r,epsil_g(1:3),
      &        g_epsil_g
-      double precision, parameter :: beta=1.0D0 ! sqrt(Ewald parameter)
+      !double precision, parameter :: beta=1.0D0 ! sqrt(Ewald parameter)
+      !double precision :: beta=10.0D0 ! sqrt(Ewald parameter)
+      double precision :: beta=0.1D0 ! sqrt(Ewald parameter)
       integer i,j,k,l,m,n,imax,maxl
      
       if(talk) then 
@@ -339,6 +343,10 @@ c---------------------------------------------------------------------
       print '("epsilon^-1="/,3(3(F12.6)/))',epsil1
       det_eps=abs(dot_product(epsil(:,1),
      &     cross_product(epsil(:,2),epsil(:,3))))
+      ! reset beta to beta/epsilon in order to make the Gaussian decay
+      ! independent of epsilon:
+      beta=beta/(det_eps**(1.0d0/3.0d0))
+      if (talk) print '(8x,"Ewald parameter beta=",F10.6)',beta 
       print '("det(epsilon)="/,F25.6)', det_eps
       r_ws=(3.0d0/(4.0d0*pi)*vol)**(1.0d0/3.0d0) 
       print '("r_ws=",F12.6)',r_ws
@@ -382,10 +390,10 @@ c---------------------------------------------------------------------
       end do
       madel=madel-2.0D0*sqrt(beta/(pi*det_eps))-pi/(beta*vol)
 
-      print*,"Madelung constant (r_ws)=",-madel*r_ws
-      print '("Madelung energy in Ryd=",F20.10)',
+      print'(8x,"Madelung constant (r_ws)=",F20.10)',-madel*r_ws
+      print '(8x,"Madelung energy in Ryd=",F20.10)',
      &   madel*charge**2/(1.0d0)
-      print '("Madelung energy in eV=",F20.10)',
+      print '(8x,"Madelung energy in eV=",F20.10)',
      &   madel*charge**2*Ryd/(1.0d0)
 
       if(talk) then 
@@ -666,12 +674,13 @@ c---------------------------------------------------------------------
 c---------------------------------------------------------------------
      
       subroutine madelen(cell,atoms,epsil,madel)
+      ! calculate the screened Madelung energy for a lattice of point
+      ! charges Z_i in a medium with a dielectic tensor, and a
+      ! homogenous compensating background.
+      ! Formula from Richard Martin, Electronic structure, Eq. F.5
       use defs
       use misc
       implicit none
-      ! calculates the madelung energy for any point charge lattice 
-      ! in a medium with any dielectric tensor using Eq. F.5 in Richard
-      ! Martin, Electronic structure  
       double precision, intent(inout) :: cell(1:3,1:3),
      &                                epsil(1:3,1:3) ! lattice vectors, epsilon tensor
       type(atom), intent(inout) :: atoms(:) 
@@ -683,7 +692,8 @@ c---------------------------------------------------------------------
      &        gabs,vol,r_ws,epsil1(1:3,1:3),det_eps,g_r,madeld,madelr
       double precision r_epsil1(1:3),sqrt_r_epsil1_r,epsil_g(1:3),
      &        g_epsil_g,sum_q,sum_q2
-      double precision :: beta=10.0D0 ! sqrt(Ewald parameter)
+      !double precision :: beta=10.0D0 ! sqrt(Ewald parameter)
+      double precision :: beta=0.10D0 ! sqrt(Ewald parameter)
       integer i,j,k,l,m,n,imax,maxl
       integer iatom,jatom,natoms
 
@@ -745,6 +755,7 @@ c---------------------------------------------------------------------
       ! reset beta to beta/epsilon in order to make the Gaussian decay
       ! independent of epsilon:
       beta=beta/(det_eps**(1.0d0/3.0d0))
+      if (talk) print '(8x,"Ewald parameter beta=",F10.6)',beta 
 
       gvecs(1,1:3)=2.0d0*pi*cross_product(cell(2,:),cell(3,:))/vol  
       gvecs(2,1:3)=2.0d0*pi*cross_product(cell(3,:),cell(1,:))/vol  

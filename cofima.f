@@ -32,12 +32,11 @@
      &                   get_mateigs, rotate_matrix, polyhedral_volume,   &
      &                   matmul_fortran
      
- 
       implicit none
 
       ! variables for the command line options 
       character(len=*), parameter :: version = '3.4.0'
-      character(len=32) :: arg
+      character(len=64) :: arg
       character(len=8) :: date
       character(len=10) :: time
       character(len=40) :: inputfile
@@ -61,7 +60,6 @@
       double precision matrix(1:3,1:3),shift(1:3),tol(1:3),tol1,tol2(2)
       double precision inmat(1:3,1:3),outmat(1:3,1:3),outimat(1:3,1:3)
       double precision invecs(1:3,1:3),outvecs(1:3,1:3)
-
 
       ! used by ansg2borh, bohr2angs:
       double precision  numinbohr,numinangs,numin,numout
@@ -92,7 +90,7 @@
       double precision dipole(1:3) 
 
       !used by divide:
-      double precision number1,number2
+      double precision number1,number2,fnum,fnum2
       
       ! used by ecoulomb
       double precision ecoul 
@@ -138,12 +136,13 @@
       character thetype*20, lattice*7
       !character FMT1*1024,FMT2*1024
       logical isopen12  ! checks if an output file is open
-      type(atom), allocatable :: atoms(:),atoms2(:),atoms3(:),atoms4(:)
+      type(atom), allocatable :: atoms(:),atoms2(:),atoms3(:),atoms4(:),  &
+     &     atoms5(:)
       type(element), allocatable :: species(:),species2(:),species3(:),
-     &     species4(:) 
+     &     species4(:),species5(:)
       integer natoms,natoms2,natoms3,nspecies,nspecies2
       double precision vecs(1:3,1:3),vecs2(1:3,1:3),origin(1:3),          &
-     &     vector(1:3),epsil,energy
+     &     vector(1:3),vector2(1:3),epsil,energy
       double precision charge
       double precision, allocatable :: allovec1(:), allovec2(:)
       double precision, allocatable :: allomat1(:,:),allomat2(:,:)
@@ -185,6 +184,7 @@ c---------------------------------------------------------------------
       i=1
       do while (i.le.command_argument_count())
          call get_command_argument(i, arg)
+         !print '(8x,"command: ",A128)',arg
     
          select case (arg)
          case ('--add')
@@ -354,8 +354,187 @@ c---------------------------------------------------------------------
                  call get_command_argument(i,charac)
                  read(charac,*) broad
                  ! 
+                 ! if present, read lcontinuous
+                 lnum1=.false. ! continuous distribution?
+                 if (i+1.le.command_argument_count()) then
+                   i=i+1
+                   call get_command_argument(i,charac)
+                   read(charac,*) lnum1
+                 end if
                  call broaden_dist(infile,intnum,intnum2,lnum,            &
-     &                             afloat,broad)
+     &                             afloat,broad,lnum1)
+                 !
+!         case ("--broaden_continuous")
+!                 ! applies a gaussian broadening to a distribution read
+!                 ! from a file
+!                 ! 
+!                 ! filename:
+!                 i=i+1
+!                 call get_command_argument(i,infile)
+!                 !
+!                 ! column with x values:
+!                 i=i+1
+!                 call get_command_argument(i,charac)
+!                 read(charac,*) intnum 
+!                 !                  
+!                 ! column with function values:
+!                 i=i+1
+!                 call get_command_argument(i,charac)
+!                 read(charac,*) intnum2 
+!                 !
+!                 ! periodic?:
+!                 i=i+1
+!                 call get_command_argument(i,charac)
+!                 read(charac,*) lnum 
+!                 !
+!                 ! periodicity length (any number will do if not
+!                 ! periodic):
+!                 i=i+1
+!                 call get_command_argument(i,charac)
+!                 read(charac,*) afloat 
+!                 !
+!                 ! broadening to be applied:
+!                 i=i+1
+!                 call get_command_argument(i,charac)
+!                 read(charac,*) broad
+!                 ! 
+!                 call broaden_continuous_dist(infile,intnum,intnum2,      &
+!     &                lnum,afloat,broad)
+         case ("--broaden_lin")
+                 ! applies a gaussian broadening to a distribution read
+                 ! from a file. Broadening changes linearly
+                 ! 
+                 ! filename:
+                 i=i+1
+                 call get_command_argument(i,infile)
+                 !
+                 ! column with x values:
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) intnum 
+                 !                  
+                 ! column with function values:
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) intnum2 
+                 !
+                 ! periodic?:
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) lnum 
+                 !
+                 ! periodicity length (any number will do if not
+                 ! periodic):
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) afloat 
+                 !
+                 ! broadening to be applied:
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) broad
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) fnum
+                 ! 
+                 ! if present, read lcontinuous
+                 lnum1=.false. ! continuous distribution?
+                 if (i+1.le.command_argument_count()) then
+                   i=i+1
+                   call get_command_argument(i,charac)
+                   read(charac,*) lnum1
+                 end if
+                 call broaden_lin_dist(infile,intnum,intnum2,lnum,        &
+     &                             afloat,broad,fnum,lnum1)
+!         case ("--broaden_lin_continuous")
+!                 ! applies a gaussian broadening to a continuous distribution read
+!                 ! from a file. Broadening changes linearly
+!                 ! 
+!                 ! filename:
+!                 i=i+1
+!                 call get_command_argument(i,infile)
+!                 !
+!                 ! column with x values:
+!                 i=i+1
+!                 call get_command_argument(i,charac)
+!                 read(charac,*) intnum 
+!                 !                  
+!                 ! column with function values:
+!                 i=i+1
+!                 call get_command_argument(i,charac)
+!                 read(charac,*) intnum2 
+!                 !
+!                 ! periodic?:
+!                 i=i+1
+!                 call get_command_argument(i,charac)
+!                 read(charac,*) lnum 
+!                 !
+!                 ! periodicity length (any number will do if not
+!                 ! periodic):
+!                 i=i+1
+!                 call get_command_argument(i,charac)
+!                 read(charac,*) afloat 
+!                 !
+!                 ! broadening to be applied:
+!                 i=i+1
+!                 call get_command_argument(i,charac)
+!                 read(charac,*) broad
+!                 i=i+1
+!                 call get_command_argument(i,charac)
+!                 read(charac,*) fnum
+!                 ! 
+!                 call broaden_lin_continuous_dist(infile,intnum,intnum2,  &
+!     &                 lnum, afloat,broad,fnum)
+!                 !
+!                 !
+         case ("--broaden_quad")
+                 ! applies a gaussian broadening to a distribution read
+                 ! from a file. Broadening changes quadratically
+                 ! 
+                 ! filename:
+                 i=i+1
+                 call get_command_argument(i,infile)
+                 !
+                 ! column with x values:
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) intnum 
+                 !                  
+                 ! column with function values:
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) intnum2 
+                 !
+                 ! periodic?:
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) lnum 
+                 !
+                 ! periodicity length (any number will do if not
+                 ! periodic):
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) afloat 
+                 !
+                 ! broadening to be applied:
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) broad
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) fnum
+                 ! 
+                 ! if present, read lcontinuous
+                 lnum1=.false. ! continuous distribution?
+                 if (i+1.le.command_argument_count()) then
+                   i=i+1
+                   call get_command_argument(i,charac)
+                   read(charac,*) lnum1
+                 end if
+                 ! 
+                 call broaden_quad_dist(infile,intnum,                    &
+     &               intnum2,lnum, afloat,broad,fnum,lnum1)
+                 !
                  !
          case ("--cageZnO")
                  ! creates a cage-like cluster of n ZnO units. n is read from the command line
@@ -661,6 +840,20 @@ c---------------------------------------------------------------------
                  end select
                  call create_neb_chain(filename1,filename2,format1,vecs,  &
      &                            vecs2,nimg)
+         case ("--cross_product")
+                 ! calculates the cross product of two 3D vectors
+                 do j=1,3
+                   i=i+1
+                   call get_command_argument(i,charac)
+                   read(charac,*) vector(j)
+                 end do
+                 do j=1,3
+                   i=i+1
+                   call get_command_argument(i,charac)
+                   read(charac,*) vector2(j)
+                 end do
+                 print '(8x,"cross product= ",3(F15.9,x))',               &
+     &           cross_product(vector,vector2)
          case ('--crysanpero')
             call scrysanpero()
          case("--cut")
@@ -683,7 +876,10 @@ c---------------------------------------------------------------------
                  call get_command_argument(i,cutchar)
                  read(cutchar(1:20),*) cuthere
                  if(abovechar.eq."sphere".or.abovechar.eq.'SPHERE'.or.    &
-     &              abovechar.eq."plane".or.abovechar.eq."PLANE") then
+     &            abovechar.eq."plane".or.abovechar.eq."PLANE".or.        &
+     &            abovechar.eq."dirplane".or.abovechar.eq."DIRPLANE".or.  &
+     &            abovechar.eq."hklplane".or.abovechar.eq."HKLPLANE")     &
+     &           then
                    i=i+1
                    call get_command_argument(i,cutchar)
                    read(cutchar(1:20),*) shift(1)
@@ -806,9 +1002,10 @@ c---------------------------------------------------------------------
      &                       nspecies,vecs)
             call read_coords(infile2,informat,atoms2,natoms2,species2,
      &                       nspecies2,vecs)
-            call diffatoms(atoms,atoms2,vecs,atoms3,atoms4,tol1)
+            call diffatoms(atoms,atoms2,vecs,atoms3,atoms4,atoms5,tol1)
             call getspecies(atoms3,species3)
             call getspecies(atoms4,species4)
+            call getspecies(atoms5,species5)
             filename1=' '
             filename1(1:12)="COMMONATOMS."
             filename1(13:12+len_trim(informat))= trim(informat)
@@ -819,6 +1016,12 @@ c---------------------------------------------------------------------
             filename1(11:10+len_trim(informat))= trim(informat)
             call write_coords(filename1,informat,atoms4,size(atoms4),
      &        species4,size(species4),vecs)
+            ! begin write new atom coordinates to file
+            !
+            call write_coords("COORDS2_NEW",informat,atoms5,              &
+     &        size(atoms5),species5,size(species5),vecs)
+            !
+            ! end write new atom coordinates to file
          case ('--deriv')
                ! calculates the first derivative of the second column wrt the
                ! first one from finite differences 
@@ -981,6 +1184,20 @@ c---------------------------------------------------------------------
                  !print '(8x,"Your result: ",1p,e12.3)',
 !     &                number1/number2
                   print fnumexp,number1/number2
+          case ("--dot_product")
+                  ! calculates the dot product of two 3D vectors
+                 do j=1,3
+                   i=i+1
+                   call get_command_argument(i,charac)
+                   read(charac,*) vector(j)
+                 end do
+                 do j=1,3
+                   i=i+1
+                   call get_command_argument(i,charac)
+                   read(charac,*) vector2(j)
+                 end do
+                 print '(8x,"dot product= ",3(F15.9,x))',                 &
+     &           dot_product(vector,vector2)
          case("--ecoulomb")
             ! calculate the electrostatic energy of a cluster of point charges.
             ! Caution: Works only for finite systems. 
@@ -1024,6 +1241,15 @@ c---------------------------------------------------------------------
                  numout=numin/hartree
                  !print '(8x,"Your number in Hartree: ",1p,e12.3)',numout
                  print fnumexp,numout
+         case ("--eV2nm")
+                 ! converts photon energies in eV to light wavelengths
+                 ! in nm
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) numin
+                 print '(8x,"Photon energy in eV: ",1p,e12.6)',numin
+                 numin=hbar*2.0d0*pi*c_light/(numin*ec)/1.0E-9  ! E=hc/lambda
+                 print '(8x,"Wavelength in nm: ",1p,e12.6)',numin
          case ("--ev2ryd","evolt2rydberg","eV2Ryd",
      &         "eVolt2Rydberg")
                  ! converts between eV and Rydberg
@@ -1644,8 +1870,11 @@ c---------------------------------------------------------------------
 !                 end do
 !                 call madelen(vecs,charge,matrix,talk,nerr)
          case("--madelen1")
-               ! calculate the madelung energy for some point charge
-               ! lattices in a homogeneous background charge
+                 ! calculate the screened madelung energy for a lattice of point
+                 ! charges with Z=1 in a homogeneously charged background.
+                 ! Formula from Rurali & Cartoixa, Nano Lett. 9, 975
+                 ! (2009); Murphy & Hine, PRB 87, 094111 (2013)
+                 !
                  ! lattice vectors
                  do j=1,3
                    do k=1,3
@@ -1668,8 +1897,10 @@ c---------------------------------------------------------------------
                  end do
                  call madelen1(vecs,charge,matrix)
          case("--madelen")
-               ! calculate the madelung energy for any point charge
-               ! lattice in a medium with any dielectic tensor
+               ! calculate the screened Madelung energy for a lattice of point
+               ! charges Z_i in a medium with a dielectic tensor, and a
+               ! homogenous compensating background.
+               ! Formula from Richard Martin, Eq. F.5
                  i=i+1
                  call get_command_argument(i,infile)
                  i=i+1
@@ -1762,6 +1993,38 @@ c---------------------------------------------------------------------
                call matrixmult(atoms,vecs,matrix)
                call write_coords(outfile,informat,atoms,natoms,species,
      &                     nspecies,vecs)
+!         case ("--cross_product")
+!                 ! calculates the cross product of two 3D vectors
+!                 do j=1,3
+!                   i=i+1
+!                   call get_command_argument(i,charac)
+!                   read(charac,*) vector(j)
+!                 end do
+!                 do j=1,3
+!                   i=i+1
+!                   call get_command_argument(i,charac)
+!                   read(charac,*) vector2(j)
+!                 end do
+!                 print '(8x,"cross product= ",3(F15.9,x))',               &
+!     &           cross_product(vector,vector2)
+         case("--mat_times_vec")
+               ! multiplies a veector with a matrix
+               ! read matrix:
+               do j=1,3
+                 do k=1,3
+                   i=i+1
+                   call get_command_argument(i,charac)
+                   read(charac,*) matrix(j,k)
+                 end do
+               end do
+               ! read vector:
+               do j=1,3
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) vector(j)
+               end do
+               print '(8x,"matrix x vector= ",3(F15.9,x))',               &
+     &         mat_times_vec(matrix,vector)
          case("--matrix_mult")
                 ! 
                 ! multiplies (n,n) matrix A with (n,n) matrix B: C=AB 
@@ -1966,6 +2229,14 @@ c---------------------------------------------------------------------
                  read(charac,*) nimg
                  call nebchain(infile,informat,outformat,
      &            nimg)
+         case ("--nm2eV")
+                 ! converts light wavelengths to photon energies in eV
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 read(charac,*) numin
+                 print '(8x,"Wavelength in nm: ",1p,e12.6)',numin
+                 numin=hbar*2.0d0*pi*c_light/(numin*1E-9)/ec  ! E=hc/lambda
+                 print '(8x,"Photon energy in eV: ",1p,e12.6)',numin
          case ('--output')
             i=i+1
             call get_command_argument(i, outputfile)
@@ -2990,6 +3261,20 @@ c---------------------------------------------------------------------
              i=i+1
              call get_command_argument(i,infile2)
             call vasp_CHG_overlap(infile,infile2)
+         case("--vasp_CHG_lin_comb")
+             ! read 2 CHGCAR files (VASP output) and calculate a linear
+             ! combination of the two. 
+             i=i+1
+             call get_command_argument(i,infile)
+             i=i+1
+             call get_command_argument(i,infile2)
+             i=i+1
+             call get_command_argument(i,charac)
+             read(charac,*) fnum
+             i=i+1
+             call get_command_argument(i,charac)
+             read(charac,*) fnum2
+            call vasp_CHG_lin_comb(infile,infile2,fnum,fnum2)
          case("--vasp_dos_pr")
                ! get projected vasp DOS from DOSCAR and OUTCAR file 
                intnum=10   ! default number of layers if not specified
@@ -3142,6 +3427,146 @@ c---------------------------------------------------------------------
      &            intvec,intvec2,intvec3,intvec4,charac3) ! nomega,omegamin,omegamax, broadening, 
                   !considered valence bands,considered conduction bands,
                   !considered spins, considered kpoints,smearing
+         case("--vasp_eps2_from_WAVEDER_LEH")
+             ! read matrix elements and other properties from WAVEDER,
+             ! OUTCAR, IBZKPT, and EIGENVAL and calculate imag(epsilon) 
+             ! in the IPA, use occupations from LEH
+             nwarn=nwarn+1
+             print fwarn,"only use without symmetries (ISYM=0 or spacegr  &
+     &oup #1 / P1 / C_1)"          
+             !
+             broad=0.025d0 ! electronic smearing
+             intnum=1001 ! number of frequencies
+             number1=0.0d0 ! minimum frequency considered
+             number2=10.0d0 ! maximum frequency considered
+             charac3='fermi' ! electronic smearing type
+             ! default: all valence bands (size(vbands)=1,vbands(1)=-1)
+             allocate(intvec(1:1)) 
+             intvec=-1
+             ! default: all conduction bands (size(cbands)=1,cbands(1)=-1)
+             allocate(intvec2(1:1)) 
+             intvec2=-1
+             ! default: all spins (size(spins)=1,spins(1)=-1)
+             allocate(intvec3(1:1)) 
+             intvec3=-1
+             allocate(intvec4(1:1)) 
+             ! default: all kpoints (size(kpoints)=1,kpoints(1)=-1)
+             intvec4=-1
+             ! default: efermi_e/h=-100000.0d0
+             fnum=-100000.0d0
+             fnum2=-100000.0d0
+             do while (i+1.lt.command_argument_count()) 
+               i=i+1
+               call get_command_argument(i,charac)
+               select case(charac)
+                 case("-broad")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) broad
+                 case("-nomega")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum
+                 case("-omegamin")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) number1
+                 case("-omegamax")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) number2
+                 case("-vbands")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! number of valence bands
+                  deallocate(intvec)
+                  allocate(intvec(1:intnum4))
+                  do j=1,intnum4
+                    i=i+1
+                    call get_command_argument(i,charac2)
+                    read(charac2,*) intvec(j) ! valence band number
+                  end do ! j
+                 case("-vbandrange")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! first valence band to consider
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum5 ! last valence band to consider
+                  deallocate(intvec)
+                  allocate(intvec(1:intnum5-intnum4+1))
+                  do j=1,size(intvec)
+                    intvec(j)=intnum4+j-1 ! valence band number
+                  end do ! j
+                 case("-cbands")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! number of conduction bands
+                  deallocate(intvec2)
+                  allocate(intvec2(1:intnum4))
+                  do j=1,intnum4
+                    i=i+1
+                    call get_command_argument(i,charac2)
+                    read(charac2,*) intvec2(j) ! conduction band number
+                  end do ! j
+                 case("-cbandrange")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! first conduction band to consider
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum5 ! last conduction band to consider
+                  deallocate(intvec2)
+                  allocate(intvec2(1:intnum5-intnum4+1))
+                  do j=1,size(intvec2)
+                    intvec2(j)=intnum4+j-1 ! valence band number
+                  end do ! j
+                 case("-spins")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! number of spins (1 for nonspinpolarized, 2 for spin-polarized)
+                  deallocate(intvec3)
+                  allocate(intvec3(1:intnum4))
+                  do j=1,intnum4
+                    i=i+1
+                    call get_command_argument(i,charac2)
+                    read(charac2,*) intvec3(j) ! spin number
+                  end do ! j
+                 case("-kpoints")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! number of kpoints to be considered
+                  deallocate(intvec4)
+                  allocate(intvec4(1:intnum4))
+                  do j=1,intnum4
+                    i=i+1
+                    call get_command_argument(i,charac2)
+                    read(charac2,*) intvec4(j) ! kpoint number
+                  end do ! j
+                 case("-smearing")
+                  i=i+1
+                  call get_command_argument(i,charac3)
+                 case("-efermi_h")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) fnum ! efermi_h ! Fermi energy for holes (should lie in VB)
+                 case("-efermi_e")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) fnum2 ! efermi_e ! Fermi energy for electrons (should lie in CB)
+               end select
+             end do
+             if (fnum<-50000.0d0.or.fnum2<-50000.0d0) then
+               call error_stop("fermi energies missing")
+             end if
+             call vasp_eps2_from_WAVEDER_LEH(intnum,number1,number2,      &
+     &         broad,intvec,intvec2,intvec3,intvec4,charac3,fnum,fnum2) ! nomega,omegamin,omegamax, broadening, 
+                  !considered valence bands,considered conduction bands,
+                  !considered spins, considered kpoints,smearing
+         case("--vasp_get_BSE_EV_xml")
+             ! read BSE eigenvalues and oscillator strengths from
+             ! vasprun.xml
+             call vasp_get_BSE_EV_xml()
          case("--vasp_get_eps_vs_omega")
              ! get frequency-dependent dielectric
              ! matrix from vasp output file. Basically a grep command.
@@ -3193,6 +3618,60 @@ c---------------------------------------------------------------------
                end select
              else
                call vasp_get_eps_vs_omega_xml()
+             end if
+         case("--vasp_get_eps_vs_omega_from_chi")
+             ! get frequency-dependent dielectric
+             ! matrix from vasp output file for an ALGO=CHI calculation. Basically a grep command.
+             ! Optionally rotate epsilon to another coordinate system.
+             ! In that case supply a rotation matrix
+             if (i+1.lt.command_argument_count()) then
+               i=i+1
+               call get_command_argument(i,charac)
+               select case(charac)
+                 case('-rotate')
+                 if (i+9.le.command_argument_count()) then
+                   if (allocated(allomat1)) deallocate(allomat1)
+                   allocate(allomat1(1:3,1:3))
+                   do j=1,3
+                     do k=1,3
+                       i=i+1
+                       call get_command_argument(i,charac)
+                       read(charac,*)  allomat1(j,k)
+                     end do
+                   end do
+                   call vasp_get_eps_vs_omega_from_chi(allomat1)
+                 end if 
+               end select
+             else
+               call vasp_get_eps_vs_omega_from_chi()
+             end if
+         case("--vasp_get_eps_vs_omega_from_chi_flip_ndiag")
+             ! get frequency-dependent dielectric
+             ! matrix from vasp output file for an ALGO=CHI calculation. Basically a grep command.
+             ! Optionally rotate epsilon to another coordinate system.
+             ! In that case supply a rotation matrix. Multiply
+             ! nondiagonal elements of epsilon-with-LFE by -1.
+             if (i+1.lt.command_argument_count()) then
+               i=i+1
+               call get_command_argument(i,charac)
+               select case(charac)
+                 case('-rotate')
+                 if (i+9.le.command_argument_count()) then
+                   if (allocated(allomat1)) deallocate(allomat1)
+                   allocate(allomat1(1:3,1:3))
+                   do j=1,3
+                     do k=1,3
+                       i=i+1
+                       call get_command_argument(i,charac)
+                       read(charac,*)  allomat1(j,k)
+                     end do
+                   end do
+                   call vasp_get_eps_vs_omega_from_chi_flip_ndiag(        &
+     &                allomat1)
+                 end if 
+               end select
+             else
+               call vasp_get_eps_vs_omega_from_chi_flip_ndiag()
              end if
          case("--vasp_get_pol")
              ! get ferroelectric polarization from a Berry phase
@@ -3345,6 +3824,10 @@ c---------------------------------------------------------------------
             ! reads binary WAVEDER file and prints to formatted file
             ! WAVEDER.dat
             call vasp_read_WAVEDER()
+         case("--vasp_write_WAVEDER_ext")
+            ! reads binary WAVEDER file and prints dipole ME and
+            ! eigenvalues to formatted file WAVEDER_EXTENDED.dat
+            call vasp_write_WAVEDER_ext()
          case("--vasp_write_BORN")
             ! reads dielectric tensor and Born effective charges from OUTCAR
             ! file and writes them to file BORN (used by phonopy).

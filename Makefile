@@ -6,8 +6,9 @@
 # begin use on HP-Notebook or meta
 ######################
 #
+#FC = gfortran-8 on HP-notebook
 FC = gfortran
-FCFLAGS = -O3 -fbounds-check -fbacktrace -fdump-core -ffpe-trap='invalid','zero','overflow','underflow','precision','denormal' -std=legacy
+FCFLAGS = -O3 -fbounds-check -fbacktrace -fdump-core -ffpe-trap='invalid','zero','overflow','underflow','precision','denormal' -std=legacy 
 LIBS = -llapack
 #
 ######################

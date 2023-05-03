@@ -146,6 +146,7 @@
       parameter(polfac_Angs_e=1.60217656535E3)
       double precision, parameter :: Angstrom=1.0E-10,  
      &     epsilon0=8.8541878170E-12   ! vacuum permittivity
+      double precision, parameter:: c_light=299792458.0d0
 
       ! special types and defs. for subroutine crysanpero
       double precision cornerweight,centerweight,faceweight

@@ -1150,14 +1150,15 @@ c--------------------------------------------------------------------
 
 c---------------------------------------------------------------------
 
-      subroutine diffatoms(atoms1,atoms2,vecs,atomssame,atomsdiff,tol)
+      subroutine diffatoms(atoms1,atoms2,vecs,atomssame,atomsdiff,        &
+     &   atoms2_new,tol)
       ! compares atoms1 and atoms2. Atoms that are (not) contained in both atoms1 and 
       ! atoms2 are written to atoms3 (atoms4)
       use misc
       use defs
       implicit none
       type(atom) atoms1(:),atoms2(:)
-      type(atom), allocatable :: atomssame(:),atomsdiff(:)  
+      type(atom), allocatable :: atomssame(:),atomsdiff(:),atoms2_new(:)
       double precision tol   ! tolerance for distance between atoms (if distance<tol, the positions are the same)  
       double precision vecs(3,3)
       ! internal variables:
@@ -1170,6 +1171,7 @@ c---------------------------------------------------------------------
       ! initialize
       natoms1=size(atoms1) 
       natoms2=size(atoms2)
+      allocate(atoms2_new(natoms2))
       ! count atoms that are the same (different) in the two structures 
       nsame=0
       ndiff=0
@@ -1232,6 +1234,7 @@ c---------------------------------------------------------------------
      &                      -atoms2(iatom2)%abswhere
             coorddiffs(iatom,4)=norm2(atoms1(iatom)%abswhere              &
      &                      -atoms2(iatom2)%abswhere)
+            atoms2_new(iatom)=atoms2(iatom2)
           end if
         end do  
       end do

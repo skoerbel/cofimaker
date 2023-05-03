@@ -1918,7 +1918,8 @@ c---------------------------------------------------------------------
      &             dos_tol)
       use defs
       use readcoords
-      use misc, only : theta_function,string2words,finegrid,broaden
+      use misc, only : theta_function,string2words,finegrid,broaden,      &
+     & getspecies
       implicit none 
       character*1024 :: eigenval,procar,outcar,doscar,line,xtics
       character filename*256,filename2*256, string*256,cdum*128
@@ -1980,6 +1981,12 @@ c---------------------------------------------------------------------
       !
       call read_coords(outcar,"outcar",atoms,natoms,species,              &
      &                 nspecies,vecs)
+      ! DEBUG:
+      do iatom=1,natoms
+        print*,iatom,atoms(iatom)%name
+      end do
+      ! END DEBUG
+      call getspecies(atoms,species)
       if (talk) print '(8x,"atom info read")'
       !
       ! end read atom info
@@ -2000,6 +2007,9 @@ c---------------------------------------------------------------------
       if(index(line,' LNONCOLLINEAR ').gt.0) then
         iread=index(line,'=')+1
         read(line(iread:),*) noncollinear
+        ! DEBUG:
+        !if (talk) print '(8x,"noncollinear=",L1)',noncollinear
+        ! END DEBUG
       end if
       goto 10
       !
@@ -2090,17 +2100,24 @@ c---------------------------------------------------------------------
      &   ", weight ",F12.6)',ikpoint,k(ikpoint,1:3),kweights(ikpoint)
         do iband=1,nbands
           read(51,'(A256)',err=100, end=100) line ! empty line
-          read(51,*,err=100, end=100) cdum,cdum,cdum,cdum,                &
+!          read(51,*,err=100, end=100) cdum,cdum,cdum,cdum,                &
+!     &           eigenvalues_up(ikpoint,iband)
+          read(51,'(A256)',err=100, end=100) line ! line with eigenvalue
+          read(line(index(line,'energy')+6:index(line,'occ')-3),*)
      &           eigenvalues_up(ikpoint,iband)
+          ! DEBUG:
 !          print '(8x,"band # ",I0, " energy ",F12.6)',                    &
 !     &         iband,eigenvalues_up(ikpoint,iband)
+          ! END DEBUG
           read(51,'(A256)',err=100, end=100) line ! empty line
           read(51,*,err=100, end=100) line ! header line (ion  s ...)
           do iline=1,natoms
             read(51,*,err=100, end=100) line
           end do
           read(51,*,err=100, end=100) cdum,dos_k(ikpoint,iband,1:10,1)
+          ! DEBUG:
           !print '(8x," dos_tot ",F12.6)', dos_k(ikpoint,iband,10,1)
+          ! END DEBUG
           ! if noncollinear, we have the total DOS first, then the 3
           ! magnetization directions. The latter are ignored here.
           if(noncollinear) then
@@ -2127,17 +2144,25 @@ c---------------------------------------------------------------------
           read(51,'(A256)',err=100, end=100) line ! empty line
           read(51,'(A256)',err=100, end=100) line ! line with k-point coordinates. We know these already
           do iband=1,nbands
-            read(51,*,err=100, end=100) cdum,cdum,cdum,cdum,              &
-     &               eigenvalues_down(ikpoint,iband)
+          read(51,'(A256)',err=100, end=100) line ! empty line
+!            read(51,*,err=100, end=100) cdum,cdum,cdum,cdum,              &
+!     &               eigenvalues_down(ikpoint,iband)
+          read(51,'(A256)',err=100, end=100) line ! line with eigenvalue
+          read(line(index(line,'energy')+6:index(line,'occ')-4),*)
+     &           eigenvalues_down(ikpoint,iband)
+            ! DEBUG:
 !            print '(8x,"band # ",I0, " energy ",F12.6)',                  &
 !     &         iband,eigenvalues_down(ikpoint,iband)
+            ! END DEBUG
             read(51,'(A256)',err=100, end=100) line ! empty line
             read(51,*,err=100, end=100) line
             do iline=1,natoms
               read(51,*,err=100, end=100) line
             end do
             read(51,*,err=100, end=100) cdum,dos_k(ikpoint,iband,1:10,2)
+            ! DEBUG:
             !print '(8x," dos_tot ",F12.6)', dos_k(ikpoint,iband,10,2)
+            ! END DEBUG
           end do ! iband
           read(51,'(A256)',err=100, end=100) line ! empty line
         end do ! ikpoint
@@ -2170,7 +2195,7 @@ c---------------------------------------------------------------------
          end do ! iener
          close(51)
          call broaden(dos_k_grid,dos_k_val_up,0.025d0,.false.,0.0D0,      &
-     &        dos_k_val_up_broad)
+     &        dos_k_val_up_broad,.false.)
          ! write broadened k-DOS  
          filename=""
          write(filename,'("DOS_UP_KPOINT_",I0,"_BROAD.DAT")') ikpoint 
@@ -2266,7 +2291,7 @@ c---------------------------------------------------------------------
            end do ! iener
            close(51)
            call broaden(dos_k_grid,dos_k_val_down,0.025d0,.false.,0.0D0,  &
-     &        dos_k_val_down_broad)
+     &        dos_k_val_down_broad,.false.)
            ! write broadened k-DOS  
            filename=""
            write(filename,'("DOS_DOWN_KPOINT_",I0,"_BROAD.DAT")')ikpoint
@@ -2425,6 +2450,9 @@ c---------------------------------------------------------------------
         iwrite=len_trim(filename)+1
         write(filename(iwrite:),'(I0)') iatom           
         iwrite=len_trim(filename)+1
+        ! DEBUG:
+        print '(8x,A2)',atoms(iatom)%name(1:2)
+        ! END DEBUG
         write(filename(iwrite:),'(A1,2A)')  '_',                          &
      &    trim(adjustl(atoms(iatom)%name ) )
         iwrite=len_trim(filename)+1
@@ -3477,13 +3505,505 @@ c---------------------------------------------------------------------
       !
       end subroutine vasp_get_eps_vs_omega
 
+c---------------------------------------------------------------------
+
+      subroutine vasp_get_eps_vs_omega_from_chi(rotmat)
+      use defs
+      use linalg
+      implicit none 
+      integer nomega
+      integer i,j,iomega,iter
+      character*1024 :: line,outfile_eps1,outfile_eps2
+      double precision :: eps1(1:3,1:3),epsi1(1:3,1:3),energy
+      double precision :: eps2(1:3,1:3),epsi2(1:3,1:3)
+      double precision, allocatable :: eps1eigs(:),eps1ev(:,:)
+      double precision, allocatable :: eps2eigs(:),eps2ev(:,:)
+      double precision, allocatable :: eps1eigsim(:)
+      double precision, allocatable :: eps2eigsim(:)
+      double precision, optional :: rotmat(1:3,1:3)
+      double precision eps1rot(3,3),eps2rot(3,3)
+      double precision eps1_eff,eps2_eff
+      !
+      print fsubstart,'get_vasp_eps_vs_omega_from_chi' 
+      !
+      ! begin initialize
+      !
+      open(51,file='OUTCAR',status='old', err=100)  
+      rewind(51)
+10    read(51,'(A1024)',end=101,err=101) line
+      if (index(line,'  NOMEGA =').gt.0) then
+          read(line(index(line,'NOMEGA =')+8:),*) nomega
+          if (talk) print '(8x,"NOMEGA=",I0)',nomega
+          goto 11
+      end if    
+      goto 10
+      !
+11    continue
+      rewind(51)
+      !
+      ! begin read eps1, eps2 without local field effects 
+      !
+      iter=0
+20    read(51,'(A1024)',end=21,err=20) line
+      if (index(line,'HEAD OF MICROSCOPIC DIELECTRIC TENSOR (INDEPENDENT  &
+     & PARTICLE)').gt.0) then
+        iter=iter+1
+        outfile_eps1=""
+        outfile_eps2=""
+        write(outfile_eps1,'("EPS1_WO_LFE_",I0,".DAT")') iter
+        write(outfile_eps2,'("EPS2_WO_LFE_",I0,".DAT")') iter
+        open(52,file=outfile_eps1,status='replace', err=102)  
+        open(53,file=outfile_eps2,status='replace', err=102)  
+        write(52,'("# ",A128)') adjustl(trim(line)) 
+        write(53,'("# ",A128)') adjustl(trim(line)) 
+        read(51,'(A1024)',err=102,end=102) line ! line consisting of minusses -----------
+        write(52,'("# ",A128,", eigenvalues & eigenvectors, average")')   &
+     & 'E(ev)      X         Y         Z        XY        YZ        ZX' 
+        write(53,'("# ",A128,", eigenvalues & eigenvectors, average")')   &
+     & 'E(ev)      X         Y         Z        XY        YZ        ZX'
+        write(52,'("# ",A128)') adjustl(trim(line)) 
+        write(53,'("# ",A128)') adjustl(trim(line)) 
+        !
+        ! begin loop over frequencies
+        !
+        do iomega=1,nomega
+          read(51,'(A1024)',err=102,end=102) line
+          !read(line(index(line,'w=')+3:),*,err=102) energy
+          read(51,*,err=20,end=21) eps1(1,1),eps2(1,1),eps1(1,2),         &
+     &  eps2(1,2),eps1(1,3),eps2(1,3)
+          read(51,*,err=20,end=21) eps1(2,1),eps2(2,1),eps1(2,2),         &
+     &  eps2(2,2),eps1(2,3),eps2(2,3)
+          read(51,*,err=20,end=21) eps1(3,1),eps2(3,1),eps1(3,2),         &
+     &  eps2(3,2),eps1(3,3),eps2(3,3)
+          read(51,'(A1024)',err=20,end=21) line
+          read(51,*,err=20,end=21) energy, eps1_eff,eps2_eff
+          read(51,'(A1024)',err=20,end=21) line
+          do i=1,3
+              do j=1,3
+                  if (abs(eps1(i,j)).lt.1E-10) eps1(i,j)=0.0d0
+                  if (abs(eps2(i,j)).lt.1E-10) eps2(i,j)=0.0d0
+              end do
+          end do
+          epsi1=eps1 ! epsi is overwritten during diagonalization
+          epsi2=eps2 ! epsi is overwritten during diagonalization
+          eps1rot=eps1
+          if (allocated(eps1eigs)) deallocate(eps1eigs)
+          if (allocated(eps1ev)) deallocate(eps1ev)
+          if (allocated(eps2eigs)) deallocate(eps2eigs)
+          if (allocated(eps2ev)) deallocate(eps2ev)
+          call get_mateigs_full_symm(epsi1,eps1eigs,eps1ev)
+          call get_mateigs_full_symm(epsi2,eps2eigs,eps2ev)
+          call sort_mateigs(eps1eigs,eps1ev)
+          call sort_mateigs(eps2eigs,eps2ev)
+          if (present(rotmat)) then
+            call rotate_matrix(3,eps1,rotmat,eps1rot)
+            call rotate_matrix(3,eps2,rotmat,eps2rot)
+          end if
+          write(52,'(F12.6,1x,6(F12.6),1x,3(F12.6),1x,9(F7.3),5x,         &
+     &9(F12.6),F15.6)'),                                                  &
+     &      energy,(eps1(i,i),i=1,3),eps1(1,2),eps1(2,3),eps1(3,1),       &
+     &      eps1eigs(1:3),(eps1ev(1:3,i),i=1,3),(eps1rot(i,1:3),i=1,3),   &
+     &      eps1_eff           
+          write(53,'(F12.6,1x,6(F12.6),1x,3(F12.6),1x,9(F7.3),5x,         &
+     &9(F12.6),F15.6)'),                                                  &
+     &      energy,(eps2(i,i),i=1,3),eps2(1,2),eps2(2,3),eps2(3,1),       &
+     &      eps2eigs(1:3),(eps2ev(1:3,i),i=1,3),(eps2rot(i,1:3),i=1,3),   &
+     &      eps2_eff           
+        end do
+        close(52)
+        close(53)
+        goto 20
+        !
+        ! end of loop over frequencies
+        !
+      end if !(index(line,'HEAD OF MICROSCOPIC DIELECTRIC TENSOR (I...
+      goto 20
+
+21    continue      
+      close(52)
+      close(53)
+      !
+      ! end read eps1, eps2 w/o local field effects
+      !
+      rewind(51)
+      iter=0
+      !
+      ! begin read eps1, eps2 with local field effects 
+      !
+30    read(51,'(A256)',end=31,err=30) line
+      if (index(line,'INVERSE MACROSCOPIC DIELECTRIC TENSOR').gt.0.and.   &
+     &   index(line,'local field effects').gt.0) then
+        iter=iter+1
+        outfile_eps1=""
+        outfile_eps2=""
+        write(outfile_eps1,'("EPS1_W_LFE_",I0,".DAT")') iter
+        write(outfile_eps2,'("EPS2_W_LFE_",I0,".DAT")') iter
+        open(52,file=outfile_eps1,status='replace', err=102)  
+        open(53,file=outfile_eps2,status='replace', err=102)  
+        write(52,'("# ",A128)') adjustl(trim(line)) 
+        write(53,'("# ",A128)') adjustl(trim(line)) 
+        read(51,'(A1024)',err=30,end=31) line ! line consisting of minusses -----------
+        write(52,'("# ",A128,", eigenvalues & eigenvectors, average")')   &
+     & 'E(ev)      X         Y         Z        XY        YZ        ZX' 
+        write(53,'("# ",A128,", eigenvalues & eigenvectors, average")')   &
+     & 'E(ev)      X         Y         Z        XY        YZ        ZX'
+        write(52,'("# ",A128)') adjustl(trim(line)) 
+        write(53,'("# ",A128)') adjustl(trim(line)) 
+        !
+        ! begin loop over frequencies
+        !
+        do iomega=1,nomega
+          read(51,'(A1024)',err=30,end=31) line
+          !read(line(index(line,'w=')+3:),*,err=102) energy
+          read(51,*,err=30,end=31) eps1(1,1),eps2(1,1),eps1(1,2),         &
+     &  eps2(1,2),eps1(1,3),eps2(1,3)
+          read(51,*,err=30,end=31) eps1(2,1),eps2(2,1),eps1(2,2),         &
+     &  eps2(2,2),eps1(2,3),eps2(2,3)
+          read(51,*,err=30,end=31) eps1(3,1),eps2(3,1),eps1(3,2),         &
+     &  eps2(3,2),eps1(3,3),eps2(3,3)
+          !! begin change sign of non-diag terms
+          !! this is now a separate routine,
+          !vasp_get_eps_vs_omega_from_chi_flip_ndiag
+          !! BUG IN VASP ? nondiag. elements of eps-with-LFE have a factor -1 ?
+          !eps1=-eps1
+          !eps1(1,1)=-eps1(1,1)
+          !eps1(2,2)=-eps1(2,2)
+          !eps1(3,3)=-eps1(3,3)
+          !eps2=-eps2
+          !eps2(1,1)=-eps2(1,1)
+          !eps2(2,2)=-eps2(2,2)
+          !eps2(3,3)=-eps2(3,3)
+          !! end change sign of non-diag terms
+          read(51,'(A1024)',err=30,end=31) line
+          read(51,*,err=30,end=31) energy, eps1_eff,eps2_eff
+          read(51,'(A1024)',err=30,end=31) line
+          do i=1,3
+              do j=1,3
+                  if (abs(eps1(i,j)).lt.1E-10) eps1(i,j)=0.0d0
+                  if (abs(eps2(i,j)).lt.1E-10) eps2(i,j)=0.0d0
+              end do
+          end do
+          epsi1=eps1 ! epsi is overwritten during diagonalization
+          epsi2=eps2 ! epsi is overwritten during diagonalization
+          eps1rot=eps1
+          if (allocated(eps1eigs)) deallocate(eps1eigs)
+          if (allocated(eps1ev)) deallocate(eps1ev)
+          if (allocated(eps2eigs)) deallocate(eps2eigs)
+          if (allocated(eps2ev)) deallocate(eps2ev)
+          call get_mateigs_full_symm(epsi1,eps1eigs,eps1ev)
+          call get_mateigs_full_symm(epsi2,eps2eigs,eps2ev)
+          call sort_mateigs(eps1eigs,eps1ev)
+          call sort_mateigs(eps2eigs,eps2ev)
+          if (present(rotmat)) then
+            call rotate_matrix(3,eps1,rotmat,eps1rot)
+            call rotate_matrix(3,eps2,rotmat,eps2rot)
+          end if
+          write(52,'(F12.6,1x,6(F12.6),1x,3(F12.6),1x,9(F7.3),5x,         &
+     &9(F12.6),F15.6)'),                                                  &
+     &      energy,(eps1(i,i),i=1,3),eps1(1,2),eps1(2,3),eps1(3,1),       &
+     &      eps1eigs(1:3),(eps1ev(1:3,i),i=1,3),(eps1rot(i,1:3),i=1,3),   &
+     &      eps1_eff           
+          write(53,'(F12.6,1x,6(F12.6),1x,3(F12.6),1x,9(F7.3),5x,         &
+     &9(F12.6),F15.6)'),                                                  &
+     &      energy,(eps2(i,i),i=1,3),eps2(1,2),eps2(2,3),eps2(3,1),       &
+     &      eps2eigs(1:3),(eps2ev(1:3,i),i=1,3),(eps2rot(i,1:3),i=1,3),   &
+     &      eps2_eff           
+        end do
+        close(52)
+        close(53)
+        goto 30
+        !
+        ! end of loop over frequencies
+        !
+      end if
+      goto 30
+
+31    continue      
+      close(52)
+      close(53)
+      !
+      ! end read eps1, eps2 w local field effects
+      !
+      close(51)
+      print fsubendext,'vasp_get_eps_vs_omega_from_chi'  
+      return
+      !
+100   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'OUTCAR not found'
+      return
+101   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'EPS(omega) not found'
+      return
+102   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'EPS2.DAT could not be written'
+      return
+103   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'EPS1.DAT could not be written'
+      return
+      !
+      end subroutine vasp_get_eps_vs_omega_from_chi
+
+c---------------------------------------------------------------------
+
+      subroutine vasp_get_eps_vs_omega_from_chi_flip_ndiag(rotmat)
+      ! same as vasp_get_eps_vs_omega_from_chi, but with nondiagnoal
+      ! elements of epsilon multiplied by -1
+      use defs
+      use linalg
+      implicit none 
+      integer nomega
+      integer i,j,iomega,iter
+      character*1024 :: line,outfile_eps1,outfile_eps2
+      double precision :: eps1(1:3,1:3),epsi1(1:3,1:3),energy
+      double precision :: eps2(1:3,1:3),epsi2(1:3,1:3)
+      double precision, allocatable :: eps1eigs(:),eps1ev(:,:)
+      double precision, allocatable :: eps2eigs(:),eps2ev(:,:)
+      double precision, allocatable :: eps1eigsim(:)
+      double precision, allocatable :: eps2eigsim(:)
+      double precision, optional :: rotmat(1:3,1:3)
+      double precision eps1rot(3,3),eps2rot(3,3)
+      double precision eps1_eff,eps2_eff
+      !
+      print fsubstart,'get_vasp_eps_vs_omega_from_chi_flip_ndiag' 
+      !
+      ! begin initialize
+      !
+      open(51,file='OUTCAR',status='old', err=100)  
+      rewind(51)
+10    read(51,'(A1024)',end=101,err=101) line
+      if (index(line,'  NOMEGA =').gt.0) then
+          read(line(index(line,'NOMEGA =')+8:),*) nomega
+          if (talk) print '(8x,"NOMEGA=",I0)',nomega
+          goto 11
+      end if    
+      goto 10
+      !
+11    continue
+      rewind(51)
+      !
+      ! begin read eps1, eps2 without local field effects 
+      !
+      iter=0
+20    read(51,'(A1024)',end=21,err=20) line
+      if (index(line,'HEAD OF MICROSCOPIC DIELECTRIC TENSOR (INDEPENDENT  &
+     & PARTICLE)').gt.0) then
+        iter=iter+1
+        outfile_eps1=""
+        outfile_eps2=""
+        write(outfile_eps1,'("EPS1_WO_LFE_",I0,".DAT")') iter
+        write(outfile_eps2,'("EPS2_WO_LFE_",I0,".DAT")') iter
+        open(52,file=outfile_eps1,status='replace', err=102)  
+        open(53,file=outfile_eps2,status='replace', err=102)  
+        write(52,'("# ",A128)') adjustl(trim(line)) 
+        write(53,'("# ",A128)') adjustl(trim(line)) 
+        read(51,'(A1024)',err=102,end=102) line ! line consisting of minusses -----------
+        write(52,'("# ",A128,", eigenvalues & eigenvectors, average")')   &
+     & 'E(ev)      X         Y         Z        XY        YZ        ZX' 
+        write(53,'("# ",A128,", eigenvalues & eigenvectors, average")')   &
+     & 'E(ev)      X         Y         Z        XY        YZ        ZX'
+        write(52,'("# ",A128)') adjustl(trim(line)) 
+        write(53,'("# ",A128)') adjustl(trim(line)) 
+        !
+        ! begin loop over frequencies
+        !
+        do iomega=1,nomega
+          read(51,'(A1024)',err=102,end=102) line
+          !read(line(index(line,'w=')+3:),*,err=102) energy
+          read(51,*,err=20,end=21) eps1(1,1),eps2(1,1),eps1(1,2),         &
+     &  eps2(1,2),eps1(1,3),eps2(1,3)
+          read(51,*,err=20,end=21) eps1(2,1),eps2(2,1),eps1(2,2),         &
+     &  eps2(2,2),eps1(2,3),eps2(2,3)
+          read(51,*,err=20,end=21) eps1(3,1),eps2(3,1),eps1(3,2),         &
+     &  eps2(3,2),eps1(3,3),eps2(3,3)
+          read(51,'(A1024)',err=20,end=21) line
+          read(51,*,err=20,end=21) energy, eps1_eff,eps2_eff
+          read(51,'(A1024)',err=20,end=21) line
+          do i=1,3
+              do j=1,3
+                  if (abs(eps1(i,j)).lt.1E-10) eps1(i,j)=0.0d0
+                  if (abs(eps2(i,j)).lt.1E-10) eps2(i,j)=0.0d0
+              end do
+          end do
+          epsi1=eps1 ! epsi is overwritten during diagonalization
+          epsi2=eps2 ! epsi is overwritten during diagonalization
+          eps1rot=eps1
+          if (allocated(eps1eigs)) deallocate(eps1eigs)
+          if (allocated(eps1ev)) deallocate(eps1ev)
+          if (allocated(eps2eigs)) deallocate(eps2eigs)
+          if (allocated(eps2ev)) deallocate(eps2ev)
+          call get_mateigs_full_symm(epsi1,eps1eigs,eps1ev)
+          call get_mateigs_full_symm(epsi2,eps2eigs,eps2ev)
+          call sort_mateigs(eps1eigs,eps1ev)
+          call sort_mateigs(eps2eigs,eps2ev)
+          if (present(rotmat)) then
+            call rotate_matrix(3,eps1,rotmat,eps1rot)
+            call rotate_matrix(3,eps2,rotmat,eps2rot)
+          end if
+          write(52,'(F12.6,1x,6(F12.6),1x,3(F12.6),1x,9(F7.3),5x,         &
+     &9(F12.6),F15.6)'),                                                  &
+     &      energy,(eps1(i,i),i=1,3),eps1(1,2),eps1(2,3),eps1(3,1),       &
+     &      eps1eigs(1:3),(eps1ev(1:3,i),i=1,3),(eps1rot(i,1:3),i=1,3),   &
+     &      eps1_eff           
+          write(53,'(F12.6,1x,6(F12.6),1x,3(F12.6),1x,9(F7.3),5x,         &
+     &9(F12.6),F15.6)'),                                                  &
+     &      energy,(eps2(i,i),i=1,3),eps2(1,2),eps2(2,3),eps2(3,1),       &
+     &      eps2eigs(1:3),(eps2ev(1:3,i),i=1,3),(eps2rot(i,1:3),i=1,3),   &
+     &      eps2_eff           
+        end do
+        close(52)
+        close(53)
+        goto 20
+        !
+        ! end of loop over frequencies
+        !
+      end if !(index(line,'HEAD OF MICROSCOPIC DIELECTRIC TENSOR (I...
+      goto 20
+
+21    continue      
+      close(52)
+      close(53)
+      !
+      ! end read eps1, eps2 w/o local field effects
+      !
+      rewind(51)
+      iter=0
+      !
+      ! begin read eps1, eps2 with local field effects 
+      !
+30    read(51,'(A256)',end=31,err=30) line
+      if (index(line,'INVERSE MACROSCOPIC DIELECTRIC TENSOR').gt.0.and.   &
+     &   index(line,'local field effects').gt.0) then
+        iter=iter+1
+        outfile_eps1=""
+        outfile_eps2=""
+        write(outfile_eps1,'("EPS1_W_LFE_",I0,".DAT")') iter
+        write(outfile_eps2,'("EPS2_W_LFE_",I0,".DAT")') iter
+        open(52,file=outfile_eps1,status='replace', err=102)  
+        open(53,file=outfile_eps2,status='replace', err=102)  
+        write(52,'("# ",A128)') adjustl(trim(line)) 
+        write(53,'("# ",A128)') adjustl(trim(line)) 
+        read(51,'(A1024)',err=30,end=31) line ! line consisting of minusses -----------
+        write(52,'("# ",A128,", eigenvalues & eigenvectors, average")')   &
+     & 'E(ev)      X         Y         Z        XY        YZ        ZX' 
+        write(53,'("# ",A128,", eigenvalues & eigenvectors, average")')   &
+     & 'E(ev)      X         Y         Z        XY        YZ        ZX'
+        write(52,'("# ",A128)') adjustl(trim(line)) 
+        write(53,'("# ",A128)') adjustl(trim(line)) 
+        !
+        ! begin loop over frequencies
+        !
+        do iomega=1,nomega
+          read(51,'(A1024)',err=30,end=31) line
+          !read(line(index(line,'w=')+3:),*,err=102) energy
+          read(51,*,err=30,end=31) eps1(1,1),eps2(1,1),eps1(1,2),         &
+     &  eps2(1,2),eps1(1,3),eps2(1,3)
+          read(51,*,err=30,end=31) eps1(2,1),eps2(2,1),eps1(2,2),         &
+     &  eps2(2,2),eps1(2,3),eps2(2,3)
+          read(51,*,err=30,end=31) eps1(3,1),eps2(3,1),eps1(3,2),         &
+     &  eps2(3,2),eps1(3,3),eps2(3,3)
+          ! begin change sign of non-diag terms
+          ! BUG IN VASP ? nondiag. elements of eps-with-LFE have a factor -1 ?
+          eps1=-eps1
+          eps1(1,1)=-eps1(1,1)
+          eps1(2,2)=-eps1(2,2)
+          eps1(3,3)=-eps1(3,3)
+          eps2=-eps2
+          eps2(1,1)=-eps2(1,1)
+          eps2(2,2)=-eps2(2,2)
+          eps2(3,3)=-eps2(3,3)
+          ! end change sign of non-diag terms
+          read(51,'(A1024)',err=30,end=31) line
+          read(51,*,err=30,end=31) energy, eps1_eff,eps2_eff
+          read(51,'(A1024)',err=30,end=31) line
+          do i=1,3
+              do j=1,3
+                  if (abs(eps1(i,j)).lt.1E-10) eps1(i,j)=0.0d0
+                  if (abs(eps2(i,j)).lt.1E-10) eps2(i,j)=0.0d0
+              end do
+          end do
+          epsi1=eps1 ! epsi is overwritten during diagonalization
+          epsi2=eps2 ! epsi is overwritten during diagonalization
+          eps1rot=eps1
+          if (allocated(eps1eigs)) deallocate(eps1eigs)
+          if (allocated(eps1ev)) deallocate(eps1ev)
+          if (allocated(eps2eigs)) deallocate(eps2eigs)
+          if (allocated(eps2ev)) deallocate(eps2ev)
+          call get_mateigs_full_symm(epsi1,eps1eigs,eps1ev)
+          call get_mateigs_full_symm(epsi2,eps2eigs,eps2ev)
+          call sort_mateigs(eps1eigs,eps1ev)
+          call sort_mateigs(eps2eigs,eps2ev)
+          if (present(rotmat)) then
+            call rotate_matrix(3,eps1,rotmat,eps1rot)
+            call rotate_matrix(3,eps2,rotmat,eps2rot)
+          end if
+          write(52,'(F12.6,1x,6(F12.6),1x,3(F12.6),1x,9(F7.3),5x,         &
+     &9(F12.6),F15.6)'),                                                  &
+     &      energy,(eps1(i,i),i=1,3),eps1(1,2),eps1(2,3),eps1(3,1),       &
+     &      eps1eigs(1:3),(eps1ev(1:3,i),i=1,3),(eps1rot(i,1:3),i=1,3),   &
+     &      eps1_eff           
+          write(53,'(F12.6,1x,6(F12.6),1x,3(F12.6),1x,9(F7.3),5x,         &
+     &9(F12.6),F15.6)'),                                                  &
+     &      energy,(eps2(i,i),i=1,3),eps2(1,2),eps2(2,3),eps2(3,1),       &
+     &      eps2eigs(1:3),(eps2ev(1:3,i),i=1,3),(eps2rot(i,1:3),i=1,3),   &
+     &      eps2_eff           
+        end do
+        close(52)
+        close(53)
+        goto 30
+        !
+        ! end of loop over frequencies
+        !
+      end if
+      goto 30
+
+31    continue      
+      close(52)
+      close(53)
+      !
+      ! end read eps1, eps2 w local field effects
+      !
+      close(51)
+      print fsubendext,'vasp_get_eps_vs_omega_from_chi_flip_ndiag'  
+      return
+      !
+100   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'OUTCAR not found'
+      return
+101   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'EPS(omega) not found'
+      return
+102   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'EPS2.DAT could not be written'
+      return
+103   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'EPS1.DAT could not be written'
+      return
+      !
+      end subroutine vasp_get_eps_vs_omega_from_chi_flip_ndiag
+
 !--------------------------------------------------------------------------
 
       subroutine vasp_get_eps_vs_omega_xml(rotmat)
       use defs
       use linalg
       implicit none 
-      integer i,j,iline,nomega,istart
+      integer i,j,iline,nomega,istart,iend
       character*1024 :: line
       double precision :: eps(1:3,1:3),epsi(1:3,1:3),energy
       double precision, allocatable :: epseigs(:),epsev(:,:)
@@ -3518,8 +4038,17 @@ c---------------------------------------------------------------------
         end do
         do iline=1,nomega
           read(51,'(A1024)',err=102,end=102) line 
-          read(line(9:85),*,err=102) energy, eps(1,1),eps(2,2),           &
-     &       eps(3,3),eps(1,2),eps(2,3),eps(3,1)
+          !read(line(9:85),*,err=102) energy, eps(1,1),eps(2,2),           &
+!     &    eps(3,3),eps(1,2),eps(2,3),eps(3,1)
+          istart=index(line,'<r>')+4
+          iend=index(line,'</r>')-2
+          read(line(istart:iend),*,err=102)                               &
+     &       energy, eps(1,1),eps(2,2),eps(3,3),eps(1,2),eps(2,3),        &
+     &       eps(3,1)
+!          ! BEGIN DEBUG
+!          print*,energy,eps(1,1),eps(2,2),eps(3,3),eps(1,2),eps(2,3),     &
+!     &    eps(3,1)
+!          ! END DEBUG
           eps(2,1)=eps(1,2)
           eps(1,3)=eps(3,1)
           do i=1,3
@@ -3538,8 +4067,8 @@ c---------------------------------------------------------------------
             call rotate_matrix(3,eps,rotmat,epsrot)
           end if
           write(52,'(A96,1x,3(F12.6),1x,9(F7.3),5x,9(F12.6))')            &
-     &      adjustl(trim(line(9:85))),epseigs(1:3),(epsev(1:3,i),i=1,3),  &
-     &      (epsrot(i,1:3),i=1,3)           
+     &    adjustl(trim(line(istart:iend))),                               &
+     &    epseigs(1:3),(epsev(1:3,i),i=1,3),(epsrot(i,1:3),i=1,3)       
         end do
         close(52)
         do iline=1,14
@@ -3551,8 +4080,11 @@ c---------------------------------------------------------------------
      &ctors")')  
         do iline=1,nomega
           read(51,'(A1024)',err=102,end=102) line 
-          read(line(9:85),*,err=102) energy, eps(1,1),eps(2,2),           &
-     &       eps(3,3),eps(1,2),eps(2,3),eps(3,1)
+          !read(line(9:85),*,err=102) energy, eps(1,1),eps(2,2),           &
+          istart=index(line,'<r>')+4
+          iend=index(line,'</r>')-2
+          read(line(istart:iend),*,err=102) energy, eps(1,1),             &
+     &       eps(2,2),eps(3,3),eps(1,2),eps(2,3),eps(3,1)
           eps(2,1)=eps(1,2)
           eps(1,3)=eps(3,1)
           do i=1,3
@@ -3571,8 +4103,8 @@ c---------------------------------------------------------------------
             call rotate_matrix(3,eps,rotmat,epsrot)
           end if
           write(52,'(A96,1x,3(F12.6),1x,9(F7.3),5x,9(F12.6))')            &
-     &      adjustl(trim(line(9:85))),epseigs(1:3),(epsev(1:3,i),i=1,3),  &
-     &      (epsrot(i,1:3),i=1,3)           
+     &    adjustl(trim(line(istart:iend))),                               &
+     &      epseigs(1:3),(epsev(1:3,i),i=1,3),(epsrot(i,1:3),i=1,3)     
         end do
         goto 11
       end if
@@ -3609,6 +4141,65 @@ c---------------------------------------------------------------------
       return
       !
       end subroutine vasp_get_eps_vs_omega_xml
+
+!--------------------------------------------------------------------------
+
+      subroutine vasp_get_BSE_EV_xml()
+      use defs
+      implicit none 
+      integer i,j,iline,istart,iend
+      character*1024 :: line
+      double precision :: energy,osci
+      !
+      print fsubstart,'get_vasp_BSE_EV_xml'  
+      !
+      ! begin initialize
+      !
+      open(51,file='vasprun.xml',status='old', err=100)  
+      rewind(51)
+      !
+      ! begin read BSE eigenvalues and oscillator strengths
+      !
+      open(52,file='EV.DAT',status='replace', err=102)  
+      write(52,'("# energy     oscillator strength")') 
+10    read(51,'(A1024)',end=101,err=101) line
+      if (index(line,'opticaltransitions').gt.0) then
+              goto 12
+      end if
+      goto 10
+      !
+12    read(51,'(A256)',err=102,end=101) line
+      if (index(line,'varray').gt.0) goto 20 ! end of data array
+      istart=index(line,'<v>')+4
+      iend=index(line,'</v>')-2
+      read(line(istart:iend),*,err=101) energy, osci 
+      write(52,'(2(F12.6))')  energy, osci
+      goto 12
+20    continue 
+      close(52)
+      ! end read EV and oscillator strength
+      !
+      close(51)
+      print fsubendext,'vasp_get_BSE_EV_xml'  
+      return
+      !
+100   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'vasprun.xml not found'
+      return
+101   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'opticaltransition not found in file'
+      return
+102   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'EV.DAT could not be written'
+      return
+      !
+      end subroutine vasp_get_BSE_EV_xml
 
 c---------------------------------------------------------------------
 
@@ -4599,6 +5190,229 @@ c---------------------------------------------------------------------
       !
        
       end subroutine vasp_CHG_overlap
+
+c---------------------------------------------------------------------
+
+      subroutine vasp_CHG_lin_comb(filename1,filename2,fac1,fac2)
+      ! needs as input two VASP CHGCAR files. 
+      ! Writes linear combination = a * CHG1 + b * CHG2
+      use defs
+      use readcoords, only : read_poscar
+      use writecoords 
+      use misc, only : vecs2vol, ithenearest,cross_product
+      !use linalg
+      implicit none 
+      double precision fac1,fac2
+      integer i,j,i0
+      character*24 FORMA
+      character*1024 :: line,filename1,filename2
+      double precision :: vecs1(1:3,1:3),vecs2(1:3,1:3),vol1,vol2
+      double precision pos1(3),posfrac1(1:3)
+      double precision pos2(3),posfrac2(1:3)
+      double precision, allocatable :: CD1(:,:,:),CD2(:,:,:),             &
+     &     CD_lin_comb(:,:,:),MCD_lin_comb(:,:,:),                        &
+     &     abspos1(:,:,:,:),fracpos1(:,:,:,:),abspos2(:,:,:,:),           &
+     &     fracpos2(:,:,:,:)
+      type(atom), allocatable :: atoms1(:),atoms2(:)
+      type(element), allocatable :: species1(:),species2(:)
+      integer natoms1,nspecies1,ngxf1,ngyf1,ngzf1 ! # of atoms, # of species, grid point numbers in first file
+      integer natoms2,nspecies2,ngxf2,ngyf2,ngzf2 ! # of atoms, # of species, grid point numbers in 2. file
+      integer ix,iy,iz,ix2,iy2,iz2
+      double precision overlap, CD1norm,CD2norm
+      !
+      print fsubstart,'vasp_CHG_lin_comb'  
+      !
+      if (talk) print'(8x,"Going to calc. ",F12.6," CHG1 + ",F12.6,       &
+     &     " CHG2")',fac1,fac2 
+      !
+      ! read coordinates, cell vectors, ... from header of CHGCAR1.
+      ! get cell volume1 to scale CD1
+      print '(8x,"Reading file ",A)',adjustl(trim(adjustl(filename1)))
+      call read_poscar(filename1,atoms1,natoms1,species1,nspecies1,
+     &           vecs1)
+      call vecs2vol(vecs1,vol1)
+      print '(8x,"1. Cell volume (Angs³): ",F12.6)',vol1
+      !
+      ! read coordinates, cell vectors, ... from header of CHGCAR2.
+      ! get cell volume2 to scale CD2
+      print '(8x,"Reading file ",A)',adjustl(trim(adjustl(filename2)))
+      call read_poscar(filename2,atoms2,natoms2,species2,nspecies2,
+     &           vecs2)
+      call vecs2vol(vecs2,vol2)
+      print '(8x,"2. Cell volume (Angs³): ",F12.6)',vol2
+      !
+      !
+      ! begin read charge density and positions from 1. file
+      !
+      print '(8x," ")'
+      open(51,file=filename1,status='old', err=100)  
+      rewind(51)
+      read(51,'(A1024)', end=101,err=101) line
+      do while (line.ne.'')
+        read(51,'(A1024)', end=101,err=101) line
+        !print *,line
+      end do
+      read(51,*) ngxf1,ngyf1,ngzf1
+      print '(8x,"NGXF1, NGYF1, NGZF1: ",3(I0,", "))', ngxf1,ngyf1,ngzf1
+      allocate(CD1(ngxf1,ngyf1,ngzf1))
+      allocate(abspos1(ngxf1,ngyf1,ngzf1,1:3))
+      allocate(fracpos1(ngxf1,ngyf1,ngzf1,1:3))
+      read(51,*) (((CD1(iX,iY,iZ),iX=1,NGXF1),iY=1,NGYF1),iZ=1,NGZF1)
+      close(51)
+      CD1norm=0.0d0
+      do ix=1,ngxf1
+       do iy=1,ngyf1
+        do iz=1,ngzf1
+         abspos1(ix,iy,iz,1)=dble(mod(ix,ngxf1))/dble(ngxf1)*vecs1(1,1)   &
+     &                     +dble(mod(iy,ngyf1))/dble(ngyf1)*vecs1(2,1)    &
+     6                     +dble(mod(iz,ngzf1))/dble(ngzf1)*vecs1(3,1)  
+         abspos1(ix,iy,iz,2)=dble(mod(ix,ngxf1))/dble(ngxf1)*vecs1(1,2)   &
+     &                     +dble(mod(iy,ngyf1))/dble(ngyf1)*vecs1(2,2)    &
+     &                     +dble(mod(iz,ngzf1))/dble(ngzf1)*vecs1(3,2)
+         abspos1(ix,iy,iz,3)=dble(mod(ix,ngxf1))/dble(ngxf1)*vecs1(1,3)   &
+     &                     +dble(mod(iy,ngyf1))/dble(ngyf1)*vecs1(2,3)    &
+     &                     +dble(mod(iz,ngzf1))/dble(ngzf1)*vecs1(3,3)
+         fracpos1(ix,iy,iz,1:3)=(/dble(mod(ix,ngxf1))/dble(ngxf1),        &
+     &                           dble(mod(iy,ngyf1))/dble(ngyf1),         &
+     &                           dble(mod(iz,ngzf1))/dble(ngzf1)/)
+         CD1norm=CD1norm+CD1(ix,iy,iz)
+        end do ! igzf1
+       end do ! igyf1
+      end do ! igxf1
+      CD1norm=CD1norm/dble(ngxf1*ngyf1*ngzf1)
+      !CD1=CD1/CD1norm
+      print '(8x,"CD1 norm=",F12.6)', CD1norm
+      !
+      ! end read charge density and positions from first file
+      !
+      !
+      ! begin read charge density and positions from 2. file
+      !
+      print '(8x," ")'
+      open(51,file=filename2,status='old', err=100)  
+      rewind(51)
+      read(51,'(A1024)', end=101,err=101) line
+      do while (line.ne.'')
+        read(51,'(A1024)', end=101,err=101) line
+        !print *,line
+      end do
+      read(51,*) ngxf2,ngyf2,ngzf2
+      print '(8x,"NGXF2, NGYF2, NGZF2: ",3(I0,", "))', ngxf2,ngyf2,ngzf2
+      allocate(CD2(ngxf2,ngyf2,ngzf2))
+      allocate(abspos2(ngxf2,ngyf2,ngzf2,1:3))
+      allocate(fracpos2(ngxf2,ngyf2,ngzf2,1:3))
+      read(51,*) (((CD2(iX,iY,iZ),iX=1,NGXF2),iY=1,NGYF2),iZ=1,NGZF2)
+      close(51)
+      !CD2norm=0.0d0
+      do ix=1,ngxf2
+       do iy=1,ngyf2
+        do iz=1,ngzf2
+         abspos2(ix,iy,iz,1)=dble(mod(ix,ngxf2))/dble(ngxf2)*vecs2(1,1)   &
+     &                     +dble(mod(iy,ngyf2))/dble(ngyf2)*vecs2(2,1)    &
+     6                     +dble(mod(iz,ngzf2))/dble(ngzf2)*vecs2(3,1)  
+         abspos2(ix,iy,iz,2)=dble(mod(ix,ngxf2))/dble(ngxf2)*vecs2(1,2)   &
+     &                     +dble(mod(iy,ngyf2))/dble(ngyf2)*vecs2(2,2)    &
+     &                     +dble(mod(iz,ngzf2))/dble(ngzf2)*vecs2(3,2)
+         abspos2(ix,iy,iz,3)=dble(mod(ix,ngxf2))/dble(ngxf2)*vecs2(1,3)   &
+     &                     +dble(mod(iy,ngyf2))/dble(ngyf2)*vecs2(2,3)    &
+     &                     +dble(mod(iz,ngzf2))/dble(ngzf2)*vecs2(3,3)
+         fracpos2(ix,iy,iz,1:3)=(/dble(mod(ix,ngxf2))/dble(ngxf2),        &
+     &                           dble(mod(iy,ngyf2))/dble(ngyf2),         &
+     &                           dble(mod(iz,ngzf2))/dble(ngzf2)/)
+         CD2norm=CD2norm+CD2(ix,iy,iz)
+        end do ! igzf2
+       end do ! igyf2
+      end do ! igxf2
+      CD2norm=CD2norm/dble(ngxf2*ngyf2*ngzf2)
+      CD2=CD2/CD2norm
+      print '(8x,"CD2 norm=",F12.6)', CD2norm
+      print '(8x," ")'
+      !
+      ! end read charge density and positions from 2. file
+      !
+      !
+      ! begin calculate lin. comb. fac1 * CD1 + fac2 * CD2
+      !
+      allocate(CD_lin_comb(ngxf1,ngyf1,ngzf1))
+      do ix=1,ngxf1
+       do iy=1,ngyf1
+        do iz=1,ngzf1
+          ix2=ithenearest(fracpos1(ix,iy,iz,1),fracpos2(:,1,1,1))
+          iy2=ithenearest(fracpos1(ix,iy,iz,2),fracpos2(1,:,1,2))
+          iz2=ithenearest(fracpos1(ix,iy,iz,3),fracpos2(1,1,:,3))
+          CD_lin_comb(ix,iy,iz)=fac1*CD1(ix,iy,iz)+fac2*CD2(ix2,iy2,iz2)
+        end do ! iz 
+       end do ! iy
+      end do ! ix  
+      !
+      deallocate(CD1,CD2)
+      !
+      ! end calculate lin. comb. fac1 * CD1 + fac2 * CD2
+      !
+      ! begin write linear combination of charges
+      !
+      print '(8x,"writing lin. comb. of charge densities...")'
+      call write_coords('CHG_LIN_COMB.vasp','poscar',atoms1,natoms1,      &
+     &                  species1,nspecies1,vecs1)
+      open(52,file='CHG_LIN_COMB.vasp',status='old',position='append',    &
+     &     err=400) 
+      write(52,'(" ")')
+      write(52,'(3I5)') ngxf1,ngyf1,ngzf1
+      FORMA='(10(1X,G11.5))'
+      write(52,FORMA) (((CD_lin_comb(iX,iY,iZ),iX=1,NGXF1),               &
+     &     iY=1,NGYF1),iZ=1,NGZF1)
+!      write(52,*) (((CD_lin_comb(iX,iY,iZ),iX=1,NGXF1),iY=1,NGYF1),iZ=1,  &
+!!     &        NGZF1)
+!      if (allocated(MCD_lin_comb)) then
+!        write(52,'(3I5)') ngxf1,ngyf1,ngzf1
+!        FORMA='(10(1X,G11.5))'
+!        write(52,FORMA) (((MCD_lin_comb(iX,iY,iZ),iX=1,NGXF1),            &
+!     &       iY=1,NGYF1),iZ=1,NGZF1) 
+!      end if
+      close(52)
+      print '(8x,"...done.")'
+      !
+      ! end write linear combination of charges
+      !
+      !
+      print fsubendext,'vasp_CHG_lin_comb'  
+      return
+      !
+100   continue    
+      close(51)
+      deallocate(CD1,CD2,CD_lin_comb)
+      if (allocated(MCD_lin_comb)) deallocate(MCD_LIN_COMB)
+      nerr=nerr+1
+      print ferrmssg,'CHGCAR not found'
+      return
+      !
+101   continue    
+      close(51)
+      deallocate(CD1,CD2,CD_lin_comb,MCD_lin_comb)
+      nerr=nerr+1
+      print ferrmssg,'something wrong with CHGCAR...'
+      return
+      !
+202   continue    
+      close(51)
+      close(52)
+      deallocate(CD1,CD2,CD_lin_comb,MCD_lin_comb)
+      nerr=nerr+1
+      print ferrmssg,'cannot write CHGAV'
+      return
+300   continue
+      nerr=nerr+1
+      deallocate(CD1,CD2,CD_lin_comb,MCD_lin_comb)
+      print ferrmssg,'please choose cutdir between 1 and 3'
+      return
+400   continue
+      nerr=nerr+1
+      deallocate(CD1,CD2,CD_lin_comb,MCD_lin_comb)
+      print ferrmssg,"Problem with writing lin. comb. of CHG's"
+      return
+      !
+       
+      end subroutine vasp_CHG_lin_comb
 
 c---------------------------------------------------------------------
 
@@ -5691,13 +6505,19 @@ c---------------------------------------------------------------------
       !
       print fsubstart,'check_if_perovskite_loose_analyze'
       is_perovskite=.false.  
+
+      ! up to 2022-06-03:
       tol_octahedral_angle=30.0d0
       tol_octahedral_tilt=30.0d0
-      !tol_octahedral_tilt=45.0d0
-      !tol_lattice_distortion=1.0d0/3.0d0 
       tol_lattice_distortion=1.1d0/3.0d0 
-      !tol_lattice_angle=15.0d0 
       tol_lattice_angle=20.0d0 
+      !
+      !! after 2022-06-03:
+      !tol_octahedral_angle=37.0d0
+      !tol_octahedral_tilt=40.0d0
+      !tol_lattice_distortion=1.1d0/3.0d0 
+      !tol_lattice_angle=20.0d0 
+      !
       print '(8x,"using ",F10.6," as cutoff")',nndist
       print '(8x,"using ",F10.6," as octahedral angle tolerance")',       &
      &        tol_octahedral_angle
@@ -6616,10 +7436,251 @@ c---------------------------------------------------------------------
       !
       ! end write WAVEDER.dat
       !
-      !
       print fsubendext,'vasp_read_WAVEDER'  
       !
       end subroutine vasp_read_WAVEDER
+
+c---------------------------------------------------------------------
+
+      subroutine vasp_write_WAVEDER_ext()
+      ! 
+      ! reads binary vasp output file WAVEDER and writes formatted
+      ! WAVEDER_EXTENDED.DAT
+      !  
+      use defs, only : fsubstart,fsubendext,error_stop
+      !
+      implicit none
+      !
+      logical file_found
+      integer fileunit
+      integer, parameter :: q=selected_real_kind(10)
+      integer,parameter :: qs=selected_real_kind(5)
+      !
+      integer nomega
+      integer, allocatable :: vbands(:),cbands(:),spins(:),kpoints(:)
+!      double precision omega_min,omega_max,efermi,sigma,occ_v,occ_c,vol
+      double precision,allocatable :: eigenvalues(:,:,:) ! energy eigenvalues for each kpoint, band, spin
+      double precision, allocatable :: kweights(:)
+      real :: nodes_in_epsilon
+      integer :: nkpoints,nbands_tot,nspins,ncbands_eps     ! number of bands considered for epsilon
+      real omega_plasmon(1:3,1:3)
+      complex(qs), allocatable :: matrix_elements(:,:,:,:,:)
+!      double precision, allocatable :: omega(:)
+!      integer ispin,ik,ib1,ib2,iomega,iomega2,idir,jdir
+      integer ispin,ik,ib1,ib2,idir,jdir
+!      double precision, allocatable :: epsilon2(:,:,:) ! epsilon(direction1,direction2,omega)
+!      character*1024 smearing
+      !
+      print fsubstart,'vasp_write_WAVEDER'  
+      !
+!      print '(8x,"Using ",I0," frequencies from ",F12.6," to ",F12.6,     &
+!     &        " eV")',nomega,omega_min,omega_max
+!      print '(/8x,"Using ",A10," smearing by ",F9.6," eV")', adjustl(     &
+!     &   trim(adjustl(smearing))),sigma
+!      !
+!      allocate(omega(1:nomega))
+!      do iomega=1,nomega
+!        omega(iomega)=omega_min+dble(iomega-1)*(omega_max-omega_min)      &
+!     &    /dble(nomega-1)
+!      end do
+!      !
+!      ! begin get volume
+!      !
+!      call vasp_read_volume(vol)
+!      !
+!      ! end get volume
+!      !
+!      ! begin read Fermi energy
+!      !
+!      call vasp_read_fermi_energy(efermi)
+!      efermi=efermi+0.02d0 ! move Fermi energy a bit above the VBM
+!      !
+!      ! end read Fermi energy
+      !
+      ! begin read WAVEDER
+      !
+      inquire(file="WAVEDER", exist=file_found)
+      if (.not.file_found) call error_stop('WAVEDER not found')
+      !
+      fileunit=51
+      open(unit=fileunit,file='WAVEDER',form='unformatted',               &
+     &   status='old')
+      read(fileunit) nbands_tot, ncbands_eps, nkpoints, nspins
+      print '(8x,I0," bands in total, ",I0," cond. bands for epsilon, ",  &
+     &        I0," kpoints, ",I0," spins")',nbands_tot,ncbands_eps,       &
+     &        nkpoints,nspins
+!      if (any(vbands==-1)) then
+!        deallocate(vbands)
+!        allocate(vbands(nbands_tot))
+!        do ib1=1,nbands_tot
+!          vbands(ib1)=ib1
+!        end do
+!      end if
+!      print '(8x,"Using ",I0," valence bands")',size(vbands)
+!      if (any(cbands==-1)) then
+!        deallocate(cbands)
+!        allocate(cbands(nbands_tot))
+!        do ib1=1,nbands_tot
+!          cbands(ib1)=ib1
+!        end do
+!      end if
+!      print '(8x,"Using ",I0," conduction bands")',size(cbands)
+!      if (any(spins==-1)) then
+!        deallocate(spins)
+!        allocate(spins(nspins))
+!        do ispin=1,nspins
+!          spins(ispin)=ispin
+!        end do
+!      end if
+!      if (any(kpoints==-1)) then
+!        deallocate(kpoints)
+!        allocate(kpoints(nkpoints))
+!        do ik=1,nkpoints
+!          kpoints(ik)=ik
+!        end do
+!      end if
+      print '(8x,"Using ",I0," spins")',nspins
+      allocate(matrix_elements(nbands_tot, ncbands_eps, nkpoints,         &
+     &         nspins, 3))
+      matrix_elements=(0.0d0,0.0d0)
+      read(fileunit) nodes_in_epsilon
+      read(fileunit) omega_plasmon
+      read(fileunit) matrix_elements(:,:,1:nkpoints,:,:)
+      close(fileunit)
+      !
+      ! end read WAVEDER
+      !
+      ! begin read eigenvalues and weights
+      !
+      call vasp_read_eigenvalues_and_weights(eigenvalues,kweights)
+      !
+      ! end read eigenvalues and weights
+      !
+      ! begin write WAVEDER.dat
+      !
+      ! open file
+      open(fileunit,FILE='WAVEDER_EXTENDED.dat',STATUS='REPLACE')
+      ! write header information
+      write(fileunit,'(3I6," # nspins nkpoints nbands_tot ncbands_eps")'  &
+     &     ) nspins, nkpoints,nbands_tot,ncbands_eps
+      ! write matrix elements
+      write(fileunit,'("# ispin ik ib1 ib2 EV(ib1) EV(ib2) complex_matri  &
+     &x_ele(x) complex_matrix_ele(y) complex_matrix_ele(z)")')
+      do ispin=1,nspins
+       do ik=1,nkpoints
+        do ib1=1,nbands_tot
+         do ib2=1,ncbands_eps
+           write(fileunit,'(4I6,2(1x,F15.6),1x,3(2F20.10))')              &
+     &        ispin,ik,ib1,ib2,eigenvalues(ik,ib1,ispin),                 &
+     &        eigenvalues(ik,ib2,ispin),                                  &
+     &        matrix_elements(ib1,ib2,ik,ispin,1:3)
+         end do ! ib2
+        end do ! ib1
+       end do ! ik
+      end do ! ispin
+      ! close
+      close(fileunit)
+      !
+      ! end write WAVEDER.dat
+      !
+!      !
+!      ! begin calculate epsilon2
+!      !
+!      allocate(epsilon2(1:3,1:3,nomega))
+!      epsilon2=0.0d0
+!      !
+!      do idir=1,3
+!      do jdir=1,3
+!       do iomega=1,nomega
+!         do ispin=1,nspins
+!          if (.not.any(spins==ispin)) cycle
+!          do ik=1,nkpoints 
+!            if (.not.any(kpoints==ik)) cycle
+!           do ib1=1,nbands_tot ! valence bands
+!            if (.not.(any(vbands==ib1).or.any(cbands==ib1))) cycle
+!            do ib2=ib1+1,nbands_tot ! conduction bands
+!             if (.not.(any(vbands==ib2).or.any(cbands==ib2))) cycle
+!             select case(smearing)
+!             case('fermi')
+!             occ_v=fermi_dist(eigenvalues(ik,ib1,ispin)-efermi,sigma)
+!             occ_c=fermi_dist(eigenvalues(ik,ib2,ispin)-efermi,sigma)
+!             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)         &
+!     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))              &
+!     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                     &
+!     &         *delta_function_fermi(eigenvalues(ik,ib2,ispin)             &
+!     &         -eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)             &
+!     &         *kweights(ik)*(occ_v-occ_c)
+!               ! contributions from negative frequencies:
+!             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)         &
+!     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))              &
+!     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                     &
+!     &         *delta_function_fermi(-eigenvalues(ik,ib2,ispin)            &
+!     &         +eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)             &
+!     &         *kweights(ik)*(occ_v-occ_c)
+!             case('gaussian')
+!             occ_v=gaussian_dist(eigenvalues(ik,ib1,ispin)-efermi,sigma)
+!             occ_c=gaussian_dist(eigenvalues(ik,ib2,ispin)-efermi,sigma)
+!             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)        &
+!     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+!     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+!     &         *delta_function_gaussian(eigenvalues(ik,ib2,ispin)         &
+!     &         -eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+!     &         *kweights(ik)*(occ_v-occ_c)
+!               ! contributions from negative frequencies:
+!             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)        &
+!     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+!     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+!     &         *delta_function_gaussian(-eigenvalues(ik,ib2,ispin)        &
+!     &         +eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+!     &         *kweights(ik)*(occ_v-occ_c)
+!           case default
+!             goto 100
+!           end select
+!            end do ! ib2
+!           end do ! ib1
+!          end do ! ik
+!         end do ! ispin
+!         if (mod(iomega*10,nomega).lt.10) print'(8x,"i,j,omega=",x,I0,x,  &
+!     &     I0,x,F12.6)',idir,jdir,omega(iomega)
+!       end do !iomega
+!      end do ! jdir
+!      end do ! idir
+!      epsilon2=epsilon2*4.0d0*pi**2/vol*bohr*Ryd*2.0d0
+!      if (nspins==1) epsilon2=2.0d0*epsilon2
+!      !
+!      ! end calculate epsilon
+!      
+!      ! begin write epsilon
+!      !
+!      ! open file
+!      open(fileunit,FILE='EPS2_FROM_WAVEDER.DAT',STATUS='REPLACE')
+!      ! write header information
+!      write(fileunit,'(" # nspins nkpoints n_vbands n_cbands",4I6)')      &
+!     &       size(spins),nkpoints,size(vbands),size(cbands)
+!      ! write epsilon
+!      write(fileunit,'("# omega eps2(1,1) eps2(2,2), eps2(3,3), eps2(1,2  &
+!     &) eps2(2,3) eps2(1,3)")')
+!      do iomega=1,nomega
+!!           write(fileunit,'(F15.6,1x,6(e13.5))')                          &
+!!           write(fileunit,'(F15.6,1x,6(e16.6))')                          &
+!           write(fileunit,'(F15.6,1x,6(E15.6E3))')                        &
+!     &        omega(iomega),epsilon2(1,1,iomega),epsilon2(2,2,iomega),    &
+!     &        epsilon2(3,3,iomega),epsilon2(1,2,iomega),epsilon2(2,3,     &
+!     &        iomega),epsilon2(3,1,iomega)
+!      end do ! iomega
+!      ! close
+!      close(fileunit)
+!      !
+!      ! end write epsilon2
+      !
+      !
+      print fsubendext,'vasp_write_WAVEDER'  
+      return
+      !
+100   close(fileunit)
+      call error_stop('unknown electronic smearing')      
+      !
+      end subroutine vasp_write_WAVEDER_ext
 
 c---------------------------------------------------------------------
 
@@ -6629,13 +7690,14 @@ c---------------------------------------------------------------------
       ! reads binary vasp output file WAVEDER and calculates epsilon2
       ! from the matrix elements 
       !  
-      use defs, only : fsubstart,fsubendext,error_stop,pi,ec,bohr,Ryd
+      use defs, only : fsubstart,fsubendext,error_stop,pi,ec,bohr,Ryd,    &
+     &   talk             
       use misc, only : fermi_dist,delta_function_fermi
       use misc, only : gaussian_dist,delta_function_gaussian
       !
       implicit none
       !
-      logical file_found
+      logical file_found,lnoncollinear
       integer fileunit
       integer, parameter :: q=selected_real_kind(10)
       integer,parameter :: qs=selected_real_kind(5)
@@ -6655,6 +7717,259 @@ c---------------------------------------------------------------------
       character*1024 smearing
       !
       print fsubstart,'vasp_eps2_from_WAVEDER'  
+      !
+      print '(8x,"Using ",I0," frequencies from ",F12.6," to ",F12.6,     &
+     &        " eV")',nomega,omega_min,omega_max
+      print '(/8x,"Using ",A10," smearing by ",F9.6," eV")', adjustl(     &
+     &   trim(adjustl(smearing))),sigma
+      !
+      allocate(omega(1:nomega))
+      do iomega=1,nomega
+        omega(iomega)=omega_min+dble(iomega-1)*(omega_max-omega_min)      &
+     &    /dble(nomega-1)
+      end do
+      !
+      ! begin get volume
+      !
+      call vasp_read_volume(vol)
+      !
+      ! end get volume
+      !
+      ! begin read Fermi energy
+      !
+      call vasp_read_fermi_energy(efermi)
+      efermi=efermi+0.02d0 ! move Fermi energy a bit above the VBM
+      !
+      ! end read Fermi energy
+      !
+      ! begin read LNONCOLLINEAR
+      !
+      lnoncollinear=.FALSE.
+      call vasp_read_lnoncollinear(lnoncollinear)
+      if(talk) print '(8x,"noncollinear run: ",A1)', lnoncollinear
+      !
+      ! end read LNONCOLLINEAR
+      !
+      ! begin read WAVEDER
+      !
+      inquire(file="WAVEDER", exist=file_found)
+      if (.not.file_found) call error_stop('WAVEDER not found')
+      !
+      fileunit=51
+      open(unit=fileunit,file='WAVEDER',form='unformatted',               &
+     &   status='old')
+      read(fileunit) nbands_tot, ncbands_eps, nkpoints, nspins
+      print '(8x,I0," bands in total, ",I0," cond. bands for epsilon, ",  &
+     &        I0," kpoints, ",I0," spins")',nbands_tot,ncbands_eps,       &
+     &        nkpoints,nspins
+      if (any(vbands==-1)) then
+        deallocate(vbands)
+        allocate(vbands(nbands_tot))
+        do ib1=1,nbands_tot
+          vbands(ib1)=ib1
+        end do
+      end if
+      print '(8x,"Using ",I0," valence bands")',size(vbands)
+      if (any(cbands==-1)) then
+        deallocate(cbands)
+        allocate(cbands(nbands_tot))
+        do ib1=1,nbands_tot
+          cbands(ib1)=ib1
+        end do
+      end if
+      print '(8x,"Using ",I0," conduction bands")',size(cbands)
+      if (any(spins==-1)) then
+        deallocate(spins)
+        allocate(spins(nspins))
+        do ispin=1,nspins
+          spins(ispin)=ispin
+        end do
+      end if
+      if (any(kpoints==-1)) then
+        deallocate(kpoints)
+        allocate(kpoints(nkpoints))
+        do ik=1,nkpoints
+          kpoints(ik)=ik
+        end do
+      end if
+      print '(8x,"Using ",I0," spins")',size(spins)
+      allocate(matrix_elements(nbands_tot, ncbands_eps, nkpoints,         &
+     &         nspins, 3))
+      matrix_elements=(0.0d0,0.0d0)
+      read(fileunit) nodes_in_epsilon
+      read(fileunit) omega_plasmon
+      read(fileunit) matrix_elements(:,:,1:nkpoints,:,:)
+      close(fileunit)
+      !
+      ! end read WAVEDER
+      !
+      ! begin read eigenvalues and weights
+      !
+      call vasp_read_eigenvalues_and_weights(eigenvalues,kweights)
+      !
+      ! end read eigenvalues and weights
+      !
+!      ! begin write WAVEDER.dat
+!      !
+!      ! open file
+!      open(fileunit,FILE='WAVEDER_EXTENDED.dat',STATUS='REPLACE')
+!      ! write header information
+!      write(fileunit,'(3I6," # nspins nkpoints nbands_tot ncbands_eps")'  &
+!     &     ) nspins, nkpoints,nbands_tot,ncbands_eps
+!      ! write matrix elements
+!      write(fileunit,'("# ispin ik ib1 ib2 EV(ib1) EV(ib2) complex_matri  &
+!     &x_ele(x) complex_matrix_ele(y) complex_matrix_ele(z)")')
+!      do ispin=1,nspins
+!       do ik=1,nkpoints
+!        do ib1=1,nbands_tot
+!         do ib2=1,ncbands_eps
+!           write(fileunit,'(4I6,2(1x,F15.6),1x,3(2F20.10))')              &
+!     &        ispin,ik,ib1,ib2,eigenvalues(ik,ib1,ispin),                 &
+!     &        eigenvalues(ik,ib2,ispin),                                  &
+!     &        matrix_elements(ib1,ib2,ik,ispin,1:3)
+!         end do ! ib2
+!        end do ! ib1
+!       end do ! ik
+!      end do ! ispin
+!      ! close
+!      close(fileunit)
+!      !
+!      ! end write WAVEDER.dat
+      !
+      !
+      ! begin calculate epsilon2
+      !
+      allocate(epsilon2(1:3,1:3,nomega))
+      epsilon2=0.0d0
+      !
+      do idir=1,3
+      do jdir=1,3
+       do iomega=1,nomega
+         do ispin=1,nspins
+          if (.not.any(spins==ispin)) cycle
+          do ik=1,nkpoints 
+            if (.not.any(kpoints==ik)) cycle
+           do ib1=1,nbands_tot ! valence bands
+            if (.not.(any(vbands==ib1).or.any(cbands==ib1))) cycle
+            do ib2=ib1+1,nbands_tot ! conduction bands
+             if (.not.(any(vbands==ib2).or.any(cbands==ib2))) cycle
+             select case(smearing)
+             case('fermi')
+             occ_v=fermi_dist(eigenvalues(ik,ib1,ispin)-efermi,sigma)
+             occ_c=fermi_dist(eigenvalues(ik,ib2,ispin)-efermi,sigma)
+             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)         &
+     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))              &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                     &
+     &         *delta_function_fermi(eigenvalues(ik,ib2,ispin)             &
+     &         -eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)             &
+     &         *kweights(ik)*(occ_v-occ_c)
+               ! contributions from negative frequencies:
+             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)         &
+     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))              &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                     &
+     &         *delta_function_fermi(-eigenvalues(ik,ib2,ispin)            &
+     &         +eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)             &
+     &         *kweights(ik)*(occ_v-occ_c)
+             case('gaussian')
+             occ_v=gaussian_dist(eigenvalues(ik,ib1,ispin)-efermi,sigma)
+             occ_c=gaussian_dist(eigenvalues(ik,ib2,ispin)-efermi,sigma)
+             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)        &
+     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+     &         *delta_function_gaussian(eigenvalues(ik,ib2,ispin)         &
+     &         -eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+     &         *kweights(ik)*(occ_v-occ_c)
+               ! contributions from negative frequencies:
+             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)        &
+     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+     &         *delta_function_gaussian(-eigenvalues(ik,ib2,ispin)        &
+     &         +eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+     &         *kweights(ik)*(occ_v-occ_c)
+           case default
+             goto 100
+           end select
+            end do ! ib2
+           end do ! ib1
+          end do ! ik
+         end do ! ispin
+         if (mod(iomega*10,nomega).lt.10) print'(8x,"i,j,omega=",x,I0,x,  &
+     &     I0,x,F12.6)',idir,jdir,omega(iomega)
+       end do !iomega
+      end do ! jdir
+      end do ! idir
+      epsilon2=epsilon2*4.0d0*pi**2/vol*bohr*Ryd*2.0d0
+      if (nspins==1.and..not.lnoncollinear) epsilon2=2.0d0*epsilon2
+      !
+      ! end calculate epsilon
+      
+      ! begin write epsilon
+      !
+      ! open file
+      open(fileunit,FILE='EPS2_FROM_WAVEDER.DAT',STATUS='REPLACE')
+      ! write header information
+      write(fileunit,'(" # nspins nkpoints n_vbands n_cbands",4I6)')      &
+     &       size(spins),nkpoints,size(vbands),size(cbands)
+      ! write epsilon
+      write(fileunit,'("# omega eps2(1,1) eps2(2,2), eps2(3,3), eps2(1,2  &
+     &) eps2(2,3) eps2(1,3)")')
+      do iomega=1,nomega
+!           write(fileunit,'(F15.6,1x,6(e13.5))')                          &
+!           write(fileunit,'(F15.6,1x,6(e16.6))')                          &
+           write(fileunit,'(F15.6,1x,6(E15.6E3))')                        &
+     &        omega(iomega),epsilon2(1,1,iomega),epsilon2(2,2,iomega),    &
+     &        epsilon2(3,3,iomega),epsilon2(1,2,iomega),epsilon2(2,3,     &
+     &        iomega),epsilon2(3,1,iomega)
+      end do ! iomega
+      ! close
+      close(fileunit)
+      !
+      ! end write epsilon2
+      !
+      !
+      print fsubendext,'vasp_eps2_from_WAVEDER'  
+      return
+      !
+100   close(fileunit)
+      call error_stop('unknown electronic smearing')      
+      !
+      end subroutine vasp_eps2_from_WAVEDER
+
+c---------------------------------------------------------------------
+
+      subroutine vasp_eps2_from_WAVEDER_LEH(nomega,omega_min,omega_max,   &
+     &    sigma,vbands,cbands,spins,kpoints,smearing,efermi_h,efermi_e)
+      ! 
+      ! reads binary vasp output file WAVEDER and calculates epsilon2
+      ! from the matrix elements. Use LEH occupations 
+      !  
+      use defs, only : fsubstart,fsubendext,error_stop,pi,ec,bohr,Ryd
+      use misc, only : fermi_dist,delta_function_fermi
+      use misc, only : gaussian_dist,delta_function_gaussian
+      !
+      implicit none
+      !
+      logical file_found
+      integer fileunit
+      integer, parameter :: q=selected_real_kind(10)
+      integer,parameter :: qs=selected_real_kind(5)
+      !
+      integer nomega
+      integer, allocatable :: vbands(:),cbands(:),spins(:),kpoints(:)
+      double precision omega_min,omega_max,efermi,sigma,occ_v,occ_c,vol
+      double precision efermi_h,efermi_e,occ_fac
+      double precision,allocatable :: eigenvalues(:,:,:) ! energy eigenvalues for each kpoint, band, spin
+      double precision, allocatable :: kweights(:)
+      real :: nodes_in_epsilon
+      integer :: nkpoints,nbands_tot,nspins,ncbands_eps     ! number of bands considered for epsilon
+      real omega_plasmon(1:3,1:3)
+      complex(qs), allocatable :: matrix_elements(:,:,:,:,:)
+      double precision, allocatable :: omega(:)
+      integer ispin,ik,ib1,ib2,iomega,iomega2,idir,jdir
+      double precision, allocatable :: epsilon2(:,:,:) ! epsilon(direction1,direction2,omega)
+      character*1024 smearing
+      !
+      print fsubstart,'vasp_eps2_from_WAVEDER_LEH'  
       !
       print '(8x,"Using ",I0," frequencies from ",F12.6," to ",F12.6,     &
      &        " eV")',nomega,omega_min,omega_max
@@ -6739,33 +8054,34 @@ c---------------------------------------------------------------------
       !
       ! end read eigenvalues and weights
       !
-      ! begin write WAVEDER.dat
-      !
-      ! open file
-      open(fileunit,FILE='WAVEDER_EXTENDED.dat',STATUS='REPLACE')
-      ! write header information
-      write(fileunit,'(3I6," # nspins nkpoints nbands_tot ncbands_eps")'  &
-     &     ) nspins, nkpoints,nbands_tot,ncbands_eps
-      ! write matrix elements
-      write(fileunit,'("# ispin ik ib1 ib2 EV(ib1) EV(ib2) complex_matri  &
-     &x_ele(x) complex_matrix_ele(y) complex_matrix_ele(z)")')
-      do ispin=1,nspins
-       do ik=1,nkpoints
-        do ib1=1,nbands_tot
-         do ib2=1,ncbands_eps
-           write(fileunit,'(4I6,2(1x,F15.6),1x,3(2F20.10))')              &
-     &        ispin,ik,ib1,ib2,eigenvalues(ik,ib1,ispin),                 &
-     &        eigenvalues(ik,ib2,ispin),                                  &
-     &        matrix_elements(ib1,ib2,ik,ispin,1:3)
-         end do ! ib2
-        end do ! ib1
-       end do ! ik
-      end do ! ispin
-      ! close
-      close(fileunit)
-      !
-      ! end write WAVEDER.dat
-      !
+!      ! begin write WAVEDER.dat
+!      !
+!      ! open file
+!      open(fileunit,FILE='WAVEDER_EXTENDED.dat',STATUS='REPLACE')
+!      ! write header information
+!      write(fileunit,'(3I6," # nspins nkpoints nbands_tot ncbands_eps")'  &
+!     &     ) nspins, nkpoints,nbands_tot,ncbands_eps
+!      ! write matrix elements
+!      write(fileunit,'("# ispin ik ib1 ib2 EV(ib1) EV(ib2) complex_matri  &
+!     &x_ele(x) complex_matrix_ele(y) complex_matrix_ele(z)")')
+!      do ispin=1,nspins
+!       do ik=1,nkpoints
+!        do ib1=1,nbands_tot
+!         do ib2=1,ncbands_eps
+!           write(fileunit,'(4I6,2(1x,F15.6),1x,3(2F20.10))')              &
+!     &        ispin,ik,ib1,ib2,eigenvalues(ik,ib1,ispin),                 &
+!     &        eigenvalues(ik,ib2,ispin),                                  &
+!     &        matrix_elements(ib1,ib2,ik,ispin,1:3)
+!         end do ! ib2
+!        end do ! ib1
+!       end do ! ik
+!      end do ! ispin
+!      ! close
+!      close(fileunit)
+!      print '(8x,"WAVEDER_EXTENDED.DAT written")'
+!      !
+!      ! end write WAVEDER.dat
+!      !
       !
       ! begin calculate epsilon2
       !
@@ -6780,42 +8096,54 @@ c---------------------------------------------------------------------
           do ik=1,nkpoints 
             if (.not.any(kpoints==ik)) cycle
            do ib1=1,nbands_tot ! valence bands
-            if (.not.(any(vbands==ib1).or.any(cbands==ib1))) cycle
+            !if (.not.(any(vbands==ib1).or.any(cbands==ib1))) cycle
+            if (.not.(any(vbands==ib1))) cycle
             do ib2=ib1+1,nbands_tot ! conduction bands
-             if (.not.(any(vbands==ib2).or.any(cbands==ib2))) cycle
+             !if (.not.(any(vbands==ib2).or.any(cbands==ib2))) cycle
+             if (.not.(any(cbands==ib2))) cycle
              select case(smearing)
              case('fermi')
-             occ_v=fermi_dist(eigenvalues(ik,ib1,ispin)-efermi,sigma)
-             occ_c=fermi_dist(eigenvalues(ik,ib2,ispin)-efermi,sigma)
+             occ_v=fermi_dist(eigenvalues(ik,ib1,ispin)-efermi_h,sigma)
+             occ_c=fermi_dist(eigenvalues(ik,ib2,ispin)-efermi_e,sigma)
+             occ_fac=(1.0d0-occ_v)*occ_c
+             if(nspins==1) occ_fac=(2.0d0-occ_v)*occ_c
              epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)         &
      &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))              &
      &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                     &
      &         *delta_function_fermi(eigenvalues(ik,ib2,ispin)             &
      &         -eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)             &
-     &         *kweights(ik)*(occ_v-occ_c)
+     &         *kweights(ik)*occ_fac
+!     &         *kweights(ik)*(1.0d0-occ_v)*occ_c
                ! contributions from negative frequencies:
              epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)         &
      &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))              &
      &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                     &
      &         *delta_function_fermi(-eigenvalues(ik,ib2,ispin)            &
      &         +eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)             &
-     &         *kweights(ik)*(occ_v-occ_c)
+     &         *kweights(ik)*occ_fac
+!     &         *kweights(ik)*(1.0d0-occ_v)*occ_c
              case('gaussian')
-             occ_v=gaussian_dist(eigenvalues(ik,ib1,ispin)-efermi,sigma)
-             occ_c=gaussian_dist(eigenvalues(ik,ib2,ispin)-efermi,sigma)
+             occ_v=gaussian_dist(eigenvalues(ik,ib1,ispin)-efermi_h,      &
+     &             sigma)
+             occ_c=gaussian_dist(eigenvalues(ik,ib2,ispin)-efermi_e,      &
+     &             sigma)
+             occ_fac=(1.0d0-occ_v)*occ_c
+             if(nspins==1) occ_fac=(2.0d0-occ_v)*occ_c
              epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)        &
      &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
      &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
      &         *delta_function_gaussian(eigenvalues(ik,ib2,ispin)         &
      &         -eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
-     &         *kweights(ik)*(occ_v-occ_c)
+     &         *kweights(ik)*occ_fac
+!     &         *kweights(ik)*(1.0d0-occ_v)*occ_c
                ! contributions from negative frequencies:
              epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)        &
      &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
      &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
      &         *delta_function_gaussian(-eigenvalues(ik,ib2,ispin)        &
      &         +eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
-     &         *kweights(ik)*(occ_v-occ_c)
+     &         *kweights(ik)*occ_fac
+!     &         *kweights(ik)*(1.0d0-occ_v)*occ_c
            case default
              goto 100
            end select
@@ -6857,13 +8185,13 @@ c---------------------------------------------------------------------
       ! end write epsilon2
       !
       !
-      print fsubendext,'vasp_eps2_from_WAVEDER'  
+      print fsubendext,'vasp_eps2_from_WAVEDER_LEH'  
       return
       !
 100   close(fileunit)
       call error_stop('unknown electronic smearing')      
       !
-      end subroutine vasp_eps2_from_WAVEDER
+      end subroutine vasp_eps2_from_WAVEDER_LEH
 
 c---------------------------------------------------------------------
 
@@ -7631,6 +8959,51 @@ c---------------------------------------------------------------------
       call error_stop("problem with OUTCAR") 
       
       end subroutine vasp_read_fermi_energy 
+
+!------------------------------------------------------------------
+
+      subroutine vasp_read_lnoncollinear(lnoncollinear)
+      !
+      use defs, only : error_stop,fsubstart,fsubendext
+      implicit none
+
+      integer fileunit
+      logical file_is_open,lnoncollinear
+      character(len=256) line
+      integer iread
+      !
+      print fsubstart,"vasp_read_lnoncollinear"
+      !
+      ! begin read F
+      !
+      lnoncollinear=.FALSE.
+      fileunit=51
+      INQUIRE (unit=fileunit, opened=file_is_open)
+      do while (file_is_open)
+        fileunit=fileunit+1
+        INQUIRE (unit=fileunit, opened=file_is_open)
+      end do
+      print '(8x,"file unit=",I0)',fileunit
+      open(fileunit,file="OUTCAR",status='old', err=21)
+      rewind(fileunit)
+10    read(fileunit,'(A256)',err=21,end=20) line
+      if(index(line,'LNONCOLLINEAR').gt.0) then
+        iread=index(line,'=')+1
+        read(line(iread:),*) lnoncollinear
+      end if
+      goto 10
+      !
+20    continue
+      close(fileunit)
+      print '(8x,"E_Fermi=",A1)',lnoncollinear
+      print fsubendext,"vasp_read_lnoncollinear"
+      return
+
+21    continue
+      close(fileunit)
+      call error_stop("problem with OUTCAR") 
+      
+      end subroutine vasp_read_lnoncollinear
 
 !-------------------------------------------------------------------      
 

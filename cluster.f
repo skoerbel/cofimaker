@@ -1227,7 +1227,8 @@ c---------------------------------------------------------------------
         type(atom) atoms(:),moreatoms(:)  ! the cluster atoms, the cluster plus embedding atoms
         type(atom), allocatable :: hydatoms(:)  ! the atoms of the hydrogenated cluster
         ! internal variables ::
-        type(atom), allocatable :: hatoms(:), dummyatoms1(:) ! the H atoms
+        type(atom), allocatable :: hatoms(:), dummyatoms1(:),             &
+     &         dummyatoms2(:) ! the H atoms
         type(atom) hatom(1:1) ! a H atom
         type(element), allocatable :: embspecies(:)
         integer natoms,nmoreatoms,nhatoms,nhydatoms,iatom,ispecies,
@@ -1244,7 +1245,8 @@ c---------------------------------------------------------------------
         natoms=size(atoms)
         nmoreatoms=size(moreatoms)
         call diffatoms(atoms,moreatoms,(/1.0d0,0.0d0,0.0d0,0.0d0,1.0d0,   &
-     &     0.0d0,0.0d0,0.0d0,1.0d0/),dummyatoms1,hatoms,0.01D0)
+     &     0.0d0,0.0d0,0.0d0,1.0d0/),dummyatoms1,hatoms,dummyatoms2,      &
+     &     0.01D0)
         ! replace the embedding atoms by H
         nhatoms=size(hatoms)
         call getspecies(hatoms,embspecies)

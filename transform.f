@@ -1349,6 +1349,9 @@ c---------------------------------------------------------------------
       case default
         goto 1000
       end select
+      ! print rotation matrix 
+      print '(8x,"rotation matrix: ",9(F15.9,x))',                        &
+     &    matrix(1,:),matrix(2,:),matrix(3,:)
       ! multiply coordinates with matrix
       do iatom=1,natoms
             ! obtains cartesian coordinates from fractional ones

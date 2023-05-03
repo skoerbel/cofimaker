@@ -59,7 +59,7 @@
         print '(a)',
      &   '  --bandgap infile informat',
      &   '                     reads the bandgap from infile with format
-     &informat (supported: nwchem).',
+     &informat (supported: nwchem,outcar,outcar_gw).',
      &   '                     usage: e.g. cofima --bandgap nwchem.out n
      &wchem'
         print '(a)',
@@ -83,12 +83,33 @@
      &   '                     converts numberinbohr from Bohr to Angstr
      &om.'
         print '(a)',
-     &   '  --broaden file x-column value-column periodic period brd',
+     &   '  --broaden file x-column value-column periodic period brd (lc  &
+     &ontinuous)',
      &   '                     reads the x values as column "x-column" a
      &nd the function values from column "value-column" of file "file"',
      &   '                     and applies a Gaussian broadening by "brd
      &". If "periodic"==T, periodicity with length "period" is accounted
-     & for. '
+     & for. If lontinuous==T, a continuous distr. is assumed'
+!        print '(a)',
+!     &   '  --broaden_continuous file x-column value-column periodic per  &
+!     &iod brd',
+!     &   '                     same as --broaden but for a continuous di  &
+!     &stribution'
+        print '(a)',
+     &   '  --broaden_lin file x-column value-column periodic period brd  &
+     &1 brd2 (lcontinuous)',
+     &   '                     same as --broaden but with a linearly cha  &
+     &nging width (from brd1 to brd2)'
+!        print '(a)',
+!     &   '  --broaden_lin_continuous file x-column value-column periodic  &
+!     &period brd1 brd2',
+!     &   '                     same as --broaden_lin but for a continuou  &
+!     &s distribution' 
+        print '(a)',
+     &   '  --broaden_quad file x-column value-column periodic period br  &
+     &d1 brd2 (lcontinuous)',
+     &   '                     same as --broaden_lin but broadening incr  &
+     &eases quadratically'
         print '(a)',
      &   '  --com file format',
      &   '                    calculates the Center Of Molecule from coo
@@ -151,6 +172,9 @@
      &', '                     create chain of linearly interpolated ima  &
      &ges'  
         print '(a)',
+     &   '  --cross_product vec1(1:3) vec2(1:3)',
+     &   '                     does the expected.' 
+        print '(a)',
      &   '  --crysanpero ',
      &   '                     execute the routine "crysanpero".',
      &   '                     An input file with instructions for crysa
@@ -182,7 +206,16 @@
      &   '  --cut file1 file2 format1 format2 plane 0/1 distance n1 n2 n  &
      &3',
      &   '                     remove atoms above(0)/below(1) of a plane  &
-     &with distance "distance" from origin and direction (n1,n2,n2)'  
+     &with distance "distance" from origin and direction (n1,n2,n2)',  
+     &   '  --cut file1 file2 format1 format2 dirplane 0/1 distance n1 n  &
+     &2 n3',
+     &   '                     remove atoms above(0)/below(1) of a plane  &
+     &with distance "distance" from origin and direction n1*a + n2*b + n  &
+     &3 * c (a,b,c = direct lattice vectors)',   
+     &   '  --cut file1 file2 format1 format2 hklplane 0/1 distance h k   &
+     &l',
+     &   '                     remove atoms above(0)/below(1) of a plane  &
+     &with distance "distance" from origin specified by Miller indices' 
         print '(a)',
      &   '  --deriv file1 deriv_mode',
      &   '                     calculates first derivative of second col
@@ -246,6 +279,9 @@
      &   '  --divide number1 number 2 ',
      &   '                     divides number 1 by number 2.'
         print '(a)',
+     &   '  --dot_product vec1(1:3) vec2(1:3)',
+     &   '                     does the expected.' 
+        print '(a)',
      &   '  --ecoulomb file format ',
      &   '                     calculates the electrostatic energy ',
      &   '                     of a cluster of point charges.',
@@ -264,6 +300,10 @@
         print '(a)',
      &   '  --ev2ryd number',
      &   '                     converts number from eV to Rydberg.'
+        print '(a)',
+     &   '  --eV2nm number',
+     &   '                     converts photon energies in eV to light    &
+     &wavelengths in nm'
         print '(a)',
      &   '  --expand',
      &   '                     expands (shrinks) cell vectors by a facto
@@ -374,17 +414,24 @@
 !     &   '                     Use Bohrs for lengths!'
         print '(a)',
      &   '  --madelen1 cellvecs charge epsilontensor ',
-     &   '                     calculates Madelung energy for a lattice
-     & of point charges in a dielectric medium with a compensating homog
-     &eneous background.',
+     &   '                     calculates the screened Madelung energy o  &
+     &f a lattice of point charges with Z=1 in a dielectric medium with   &
+     &a compensating homogeneous background charge.',
+     &   '                     Formula from Rurali & Cartoixa, Nano Lett  &
+     &. 9, 975 (2009); Murphy & Hine, PRB 87, 094111 (2013).',
      &   '                     Use Bohrs for lengths!'
         print '(a)',
      &   '  --madelen file format epsilontensor ',
-     &   '                     calculates Madelung energy for a lattice
-     & of point charges in a dielectric medium'
+     &   '                     calculates the screened Madelung energy o  &
+     &f a lattice of point charges Z_i in a dielectric medium with a hom  &
+     &ogeneous compensating background charge.',                          &
+     &   '                     Formula from Richargd Martin, Eq. F.5'
         print '(a)',
      &   '  --mateigs n matrix  ',
      &   '                     calculates eigenvalues of nxn matrix.'
+        print '(a)',
+     &   '  --mat_times_vec matrix(1:3,1:3) vec(1:3) ',                   &
+     &   '                     calculates matriy times vector.'
         print '(a)',
      &   '  --matrix_mult n matrix1 matrix2  ',
      &   '                     calculates matrix3=matrix1*matrix2 (nxn m  &
@@ -484,6 +531,10 @@
      &er sphere of radius radius0 that is fixed. "test" is optional and
      &causes the routine to stop after the number of configurations has
      & been calculated.'
+        print '(a)',
+     &   '  --nm2eV number',
+     &   '                     converts light wavelengths in nm to photo  &
+     &n energies in eV'
         print '(a)',
      &   '  --overlap file_wf1 file_wf2 file_smat',
      &   '                     calculates the overlap between two sets o
@@ -686,16 +737,37 @@
      &file2 (CHGCAR format) and calculate their 3D overlap integral. Wri  &
      &tes also file CD_abs_diff.vasp with |charge difference|.'   
         print '(a)',
+     &   '  --vasp_CHG_lin_comb file1 file2 fac1 fac2',
+     &   '                     read two charge densities from file1 and   &
+     &file2 (CHGCAR format) and calculate their linear combination fac1   &
+     &* CHG1 + fac2 * CHG2, which is written to CHG_LIN_COMB.vasp.'
+        print '(a)',
      &   '  --vasp_dos_pr (-layers nlayers -direction idir -origin origi  &
      &n -dos_tol)',
      &   '                     get projected DOS from DOSCAR and OUTCAR   &
      &with optional parameters for layer properties. dos_tol for band ',
      &   '                     edge detection, default 1E-4' 
         print '(a)',
+     &   '  --vasp_get_BSE_EV_xml',
+     &   '                     read BSE eigenvalues and oscillator stren  &
+     &gths from vasprun.xml'
+        print '(a)',
      &   '  --vasp_get_eps_vs_omega (-rotate rotation matrix)',
      &   '                     get frequency-dependent dielectric matrix  &
      & from OUTCAR and write to EPS1/2.DAT. Optional: rotate epsilon',    &
      &   '                     to epsrot = S⁺ eps S'   
+        print '(a)',
+     &   '  --vasp_get_eps_vs_omega_from_chi (-rotate rotation matrix)',
+     &   '                     get frequency-dependent dielectric matrix  &
+     & from OUTCAR and write to EPS1/2.DAT. Optional: rotate epsilon',    &
+     &   '                     to epsrot = S⁺ eps S. Same as --vasp_get_  &
+     &eps_vs_omega but now from ALGO=CHI, w and w/o local field effects'   
+        print '(a)',
+     &   '  --vasp_get_eps_vs_omega_from_chi_flip_ndiag (-rotate rotatio  &
+     &n matrix)',
+     &   '                     same as vasp_get_eps_vs_omega_from_chi, b  &
+     &ut with the nondiagonal elements of epsilon-with-LFE multiplied by  &
+     & -1 '
         print '(a)',
      &   '  --vasp_get_eps_vs_omega_xml (rotation matrix)',
      &   '                     get frequency-dependent dielectric matrix  &
@@ -743,6 +815,25 @@
      &M=0 or spacegroup #1 / P1 / C_1).',                                 &
      &   '                     smearing=fermi or gaussian'   
         print '(a)',
+     &   '  --vasp_eps2_from_WAVEDER_LEH (-nomega nomega -omegamin omega  &
+     &min -omegamax omegamax -broad broadening -vbands nvbands vbands -c  &
+     &bands ncbands cbands -spins nspins spins -vbandrange firstband las  &
+     &tband -cbandrange firstband lastband -kpoints ... -smearing ...)',
+     &   '                     -efermi_e efermi_e -efermi_h efermi_h',  
+     &   '                     reads WAVEDER, EIGENVAL and OUTCAR files   &
+     &                         and calculates epsilon2. Optionally speci  &
+     &fy number of frequencies, ',                                        &
+     &   '                     min and max frequency, number of valence   &
+     &bands, conduction bands, and spins and a vector of the requested b  &
+     &ands and spins, range of valence or conduction bands. ' ,           &
+     &   '                     Example: -nomega 1001 -omegamax 0.0 -omeg  &
+     &amin 10.0 -broad 0.025 -vbands 4  1 2 3 4 -cbands 4  5 6 7 8 -spin  &
+     &s 1  2',                                                            &
+     &   ' ',                                                             &
+     &   '                     WARNING: only use without symmetries (ISY  &
+     &M=0 or spacegroup #1 / P1 / C_1).',                                 &
+     &   '                     smearing=fermi or gaussian'   
+        print '(a)',
      &   '  --vasp_kaux KPOINTfile disp1 disp2 disp3',  
      &   '                     reads kpoints from KPOINTSfile and prints  &
      & a file KPOINTS.AUX with the original kpoints plus 6 auxiliary ',   &
@@ -764,6 +855,10 @@
      &   '  --vasp_read_WAVEDER ',
      &   '                     print content of WAVEDER to formatted fil  &
      &e WAVEDER.dat'   
+        print '(a)',
+     &   '  --vasp_write_WAVEDER_ext ',
+     &   '                     reads binary WAVEDER file and prints dipo  &
+     &le ME and eigenvalues to formatted file WAVEDER_EXTENDED.dat'
         print '(a)',
      &   '  --WAVECAR_ana ',
      &   '                     reads binary WAVECAR file header'

@@ -23,6 +23,7 @@ c---------------------------------------------------------------------
       ! internal variables
       logical isopen12,fileexists
       integer natom,i,j,iatom,ispecies
+      character errmssg*256
       
       ! write output to unit 12, if open, else print to terminal
       INQUIRE (unit=12, opened=isopen12)
@@ -168,10 +169,14 @@ c---------------------------------------------------------------------
       return
 1001  nerr=nerr+1
       if(isopen12) then
-            write(12,ferrmssg) "The specified file was not found" 
+            errmssg=''
+            write(errmssg,'("file not found: ",A100)') fincoords
+            write(12,ferrmssg) errmssg
             write(12,fsubendext) 'read_coords'
       else
-            print ferrmssg,"The specified file was not found" 
+            errmssg=''
+            write(errmssg,'("file not found: ",A100)') fincoords
+            print ferrmssg,errmssg
             print fsubendext, 'read_coords'
       end if
       return
@@ -3300,7 +3305,7 @@ c---------------------------------------------------------------------
 
       use defs
       use misc, only : getspecies, get_masses_of_atoms,                   &
-     &     get_masses_of_species,abs2frac
+     &     get_masses_of_species,abs2frac,frac2abs
       implicit none
       
       ! variables
@@ -3339,6 +3344,9 @@ c---------------------------------------------------------------------
           allocate(atoms(natoms))
           atoms(:)%core='core'
         end if
+        ! BEGIN DEBUG
+        !if (talk) print '(8x,"Found ",I0," atoms.")',natoms
+        ! END DEBUG
         goto 11 
       end if
       goto 10
@@ -3355,16 +3363,26 @@ c---------------------------------------------------------------------
       goto 12
 13    continue
       allocate(species(nspecies))
-      !print*, "nspecies=",nspecies
+      species%name=' '
+      ! BEGIN DEBUG
+      !if (talk) print '(8x,"Found ",I0," species.")',nspecies
+      ! END DEBUG
       ! end get number of species
 !
       ! begin get species names
       rewind(21)  
       ispecies=0
 14    read (21,'(A100)',end=15,err=1002) line
+      ! BEGIN DEBUG
+      !print*,line
+      ! END DEBUG
       if (index(line,'VRHFIN =').gt.0) then
         ispecies=ispecies+1  
         species(ispecies)%name=line(index(line,'=')+1:index(line,':')-1)
+        ! BEGIN DEBUG
+        !print '(8x,"species name found.")'
+        !print '(8x,A)', line(index(line,'=')+1:index(line,':')-1)
+        ! END DEBUG
       end if
       !print '(8x,"species names read")'
       goto 14
@@ -3372,6 +3390,12 @@ c---------------------------------------------------------------------
 !
       ! begin get atoms per species 
 15    continue
+      ! BEGIN DEBUG
+      !if (talk) print '(8x,"Found these species:")'
+      !do ispecies=1,nspecies
+      !  if(talk) print '(8x,A2)',species(ispecies)%name(1:2)
+      !end do
+      ! END DEBUG
       rewind(21)  
 16    read (21,'(A100)',end=1002,err=1002) line
       if (index(line,'ions per type =').gt.0) then
@@ -3424,6 +3448,19 @@ c---------------------------------------------------------------------
         end do
       end if
       !print '(8x,"forces read")' ! DEBUG
+      if (index(line,'  position of ions in fractional coordinates (dire  &
+     &ct lattice)').gt.0) then
+        jatom=0
+        do ispecies=1,nspecies
+          do iatom=1,species(ispecies)%howmany
+            jatom=jatom+1
+            atoms(jatom)%name=species(ispecies)%name
+            read (21,*,err=1002,end=1002) atoms(jatom)%where(1:3)
+            call frac2abs(atoms(jatom)%where,vecs,atoms(jatom)%abswhere)
+          end do
+        end do
+      end if
+      !print '(8x,"fractional positions read")' ! DEBUG
       !
       ! begin read BEC (if polarization calculation)
       !

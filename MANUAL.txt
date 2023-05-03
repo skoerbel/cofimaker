@@ -31,7 +31,7 @@ cofima options:
                      if you have myfile40.cfg, myfile60.cfg,
                      ...myfile100.cfg.
   --bandgap infile informat
-                     reads the bandgap from infile with formatinformat (supported: nwchem).
+                     reads the bandgap from infile with formatinformat (supported: nwchem,outcar,outcar_gw).
                      usage: e.g. cofima --bandgap nwchem.out nwchem
   --basis4fiesta ele zetamin zetamax nzeta lmax (rmax "rmax"
                      npoints "npoints")
@@ -45,9 +45,13 @@ cofima options:
                      cofima --basis4fiesta He 0.8 4.0 8 2 rmax30.0 npoints 5000
   --bohr2angs numberinbohr
                      converts numberinbohr from Bohr to Angstrom.
-  --broaden file x-column value-column periodic period brd
+  --broaden file x-column value-column periodic period brd (lcontinuous)
                      reads the x values as column "x-column" and the function values from column "value-column" of file "file"
-                     and applies a Gaussian broadening by "brd". If "periodic"==T, periodicity with length "period" is accounted for. 
+                     and applies a Gaussian broadening by "brd". If "periodic"==T, periodicity with length "period" is accounted for. If lontinuous==T, a continuous distr. is assumed
+  --broaden_lin file x-column value-column periodic period brd1 brd2 (lcontinuous)
+                     same as --broaden but with a linearly changing width (from brd1 to brd2)
+  --broaden_quad file x-column value-column periodic period brd1 brd2 (lcontinuous)
+                     same as --broaden_lin but broadening increases quadratically
   --com file format
                     calculates the Center Of Molecule from coordinates in "file" which has format "format".
   --comass file format
@@ -83,6 +87,8 @@ cofima options:
   --create_neb_chain file1 file2 format N (vecs1 vecs2)
                      read file1 and file2, which have format "format", if needed read vectors, read number N of images inbetween
                      create chain of linearly interpolated images
+  --cross_product vec1(1:3) vec2(1:3)
+                     does the expected.
   --crysanpero 
                      execute the routine "crysanpero".
                      An input file with instructions for crysanpero is required.
@@ -145,6 +151,8 @@ cofima options:
                      non-orthogonal vectors.
   --divide number1 number 2 
                      divides number 1 by number 2.
+  --dot_product vec1(1:3) vec2(1:3)
+                     does the expected.
   --ecoulomb file format 
                      calculates the electrostatic energy 
                      of a cluster of point charges.
@@ -216,12 +224,16 @@ cofima options:
                      a dipole basis (like NaCl).
                       Use Bohrs for lengths!
   --madelen1 cellvecs charge epsilontensor 
-                     calculates Madelung energy for a lattice  of point charges in a dielectric medium with a compensating homogeneous background.
+                     calculates the screened Madelung energy of a lattice of point charges with Z=1 in a dielectric medium with a compensating homogeneous background charge.
+                     Formula from Rurali & Cartoixa, Nano Lett. 9, 975 (2009); Murphy & Hine, PRB 87, 094111 (2013).
                      Use Bohrs for lengths!
   --madelen file format epsilontensor 
-                     calculates Madelung energy for a lattice  of point charges in a dielectric medium
+                     calculates the screened Madelung energy of a lattice of point charges Z_i in a dielectric medium with a homogeneous compensating background charge.
+                     Formula from Richargd Martin, Eq. F.5
   --mateigs n matrix  
                      calculates eigenvalues of nxn matrix.
+  --mat_times_vec matrix(1:3,1:3) vec(1:3) 
+                     calculates matriy times vector.
   --matrix_mult n matrix1 matrix2  
                      calculates matrix3=matrix1*matrix2 (nxn matrices only).
   --mbppnebana mbppout nimg 
@@ -402,12 +414,21 @@ ACM Transactions on Mathematical software 22 no 4, 469-483, 1996
                      read charge density file "file" output by VASP, write density inside and outside to files. "origin" must be three fractional numbers, "radius" the radius in Angs
   --vasp_CHG_overlap file1 file2
                      read two charge densities from file1 and file2 (CHGCAR format) and calculate their 3D overlap integral. Writes also file CD_abs_diff.vasp with |charge difference|.
+  --vasp_CHG_lin_comb file1 file2 fac1 fac2
+                     read two charge densities from file1 and file2 (CHGCAR format) and calculate their linear combination fac1 * CHG1 + fac2 * CHG2, which is written to CHG_LIN_COMB.vasp.
   --vasp_dos_pr (-layers nlayers -direction idir -origin origin -dos_tol)
                      get projected DOS from DOSCAR and OUTCAR with optional parameters for layer properties. dos_tol for band 
                      edge detection, default 1E-4
+  --vasp_get_BSE_EV_xml
+                     read BSE eigenvalues and oscillator strengths from vasprun.xml
   --vasp_get_eps_vs_omega (-rotate rotation matrix)
                      get frequency-dependent dielectric matrix from OUTCAR and write to EPS1/2.DAT. Optional: rotate epsilon
                      to epsrot = S⁺ eps S
+  --vasp_get_eps_vs_omega_from_chi (-rotate rotation matrix)
+                     get frequency-dependent dielectric matrix from OUTCAR and write to EPS1/2.DAT. Optional: rotate epsilon
+                     to epsrot = S⁺ eps S. Same as --vasp_geeps_vs_omega but now from ALGO=CHI, w and w/o local field effects
+  --vasp_get_eps_vs_omega_from_chi_flip_ndiag (-rotate rotation matrix)
+                     same as vasp_get_eps_vs_omega_from_chi, but with the nondiagonal elements of epsilon-with-LFE multiplied by -1 
   --vasp_get_eps_vs_omega_xml (rotation matrix)
                      get frequency-dependent dielectric matrix from vasp.xml and write to EPS1/2.DAT. Optional: rotate epsilon
                      to epsrot = S⁺ eps S
@@ -428,6 +449,14 @@ ACM Transactions on Mathematical software 22 no 4, 469-483, 1996
  
                      WARNING: only use without symmetries (ISYM=0 or spacegroup #1 / P1 / C_1).
                      smearing=fermi or gaussian
+  --vasp_eps2_from_WAVEDER_LEH (-nomega nomega -omegamin omegamin -omegamax omegamax -broad broadening -vbands nvbands vbands -cbands ncbands cbands -spins nspins spins -vbandrange firstband lastband -cbandrange firstband lastband -kpoints ... -smearing ...)
+                     -efermi_e efermi_e -efermi_h efermi_h
+                     reads WAVEDER, EIGENVAL and OUTCAR files                          and calculates epsilon2. Optionally specify number of frequencies, 
+                     min and max frequency, number of valence bands, conduction bands, and spins and a vector of the requested bands and spins, range of valence or conduction bands. 
+                     Example: -nomega 1001 -omegamax 0.0 -omegamin 10.0 -broad 0.025 -vbands 4  1 2 3 4 -cbands 4  5 6 7 8 -spins 1  2
+ 
+                     WARNING: only use without symmetries (ISYM=0 or spacegroup #1 / P1 / C_1).
+                     smearing=fermi or gaussian
   --vasp_kaux KPOINTfile disp1 disp2 disp3
                      reads kpoints from KPOINTSfile and prints a file KPOINTS.AUX with the original kpoints plus 6 auxiliary 
                      kpoints shifted by +- disp1 in the cartesian x direction, +- disp2 in y direction, etc. If OUTCAR is not
@@ -439,6 +468,8 @@ ACM Transactions on Mathematical software 22 no 4, 469-483, 1996
                      (including startk and endk).
   --vasp_read_WAVEDER 
                      print content of WAVEDER to formatted file WAVEDER.dat
+  --vasp_write_WAVEDER_ext 
+                     reads binary WAVEDER file and prints dipole ME and eigenvalues to formatted file WAVEDER_EXTENDED.dat
   --WAVECAR_ana 
                      reads binary WAVECAR file header
   --vasp_write_BORN (-natoms 2 -atoms 1 5)
@@ -448,33 +479,3 @@ ACM Transactions on Mathematical software 22 no 4, 469-483, 1996
                     calculates the classical Coulomb energy of an exciton from wave functions read from cube file1(e) and file2(h). Currently format must be cube.
                     Only every stepth grid point in file is used (faster). finestep is number of fine mesh points per coarse point near r=0 where Coulomb diverges.
                     rmin is radius below which fine grid is used. Default: step=4, finestep=2, rmin~=grid spacing.
- 
-Examples for using the option "transform":
- 
---transform matrix 0.0 1.0 0.0  1.0 0.0 0.0  0.0 0.0 1.0 COORAT.IN COORAT.OUT coorat -mult 1 1 2 (mult has bug, better run cofima --mult, see help)
-reads coordinates from file "COORAT.IN", which has the MBPP (COORAT) format, exchanges x and y coordinates and  writes the output to "COORAT.OUT". The "-mult" option is optional and returns an extended supercell, e.g. a 1x1x2 cell here.
-(mult has bug, better run cofima --mult, see help)
- 
---transform vectors 0.0 1.0 1.0  1.0 0.0 1.0 1.0 1.0 0.0   1.0 0.0 0.0  0.0 1.0 0.0  0.0 0.0 1.0 COORAT.IN COORAT.OUT coorat
-reads coordinates from file "COORAT.IN", which has the MBPP (COORAT) format, transforms from fcc to sc lattice vectors and writes the output to "COORAT.OUT".
- 
---transform shift 0.0 0.0 0.25 COORAT.IN COORAT.OUT coorat
---transform shiftabs 5.0 0.0 1.0 in.xyz out.xyz xyz
-reads coordinates from file "COORAT.IN", which has the MBPP (COORAT) format, shifts the z coordinate by 0.25 and writes the output to "COORAT.OUT".
- 
---transform sc2hex COORAT.IN COORAT.OUT coorat
-reads coordinates from file "COORAT.IN", which has the MBPP (COORAT) format, transforms from sc to hex and writes the output to "COORAT.OUT".
- 
---transform mirror COORAT.IN COORAT.OUT coorat 1/2/3
-reads coordinates from file "COORAT.IN", which has the MBPP (COORAT) format, mirrors the y coordinates at x/y/z&=0 and writes the output to "COORAT.OUT".
- 
-  --transform mapback infile outfile format (-tol tol1 tol2 tol3)
-                     mapback to region roughly between 0 and 1 (between -tol and 1-tol, actually).
---transform mult 1 2 2 COORAT.IN COORAT.OUT  coorat.
-reads coordinates from file "COORAT.IN", which has the MBPP (COORAT) format, multiplies the unit cell by 2 in the y and z direction and writes the output to "COORAT.OUT".
-                     Deprecated and buggy, use cofima --mult instead.
- 
---transform sort COORAT.IN COORAT.OUT c      oorat
-reads coordinates from file "COORAT.IN", which has the MBPP (COORAT) format, sorts the coordinates and writes the output to "COORAT.OUT".
---transform sort COORAT.IN COORAT.OUT c      oorat -tol 0.1 0.1 0.1
-The option "-tol t1 t2 t3" specifies          the position difference above which coordinates are assumed to    differ. If the option is omitted, the default tolerance is used.  It is defined in defs.f.

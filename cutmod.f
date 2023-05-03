@@ -27,7 +27,7 @@
       integer natoms,nspecies,nkeep,nspeckeep,
      &      nspeckeepH
       integer nremove,jrm
-      double precision vecs(1:3,1:3),distvec(1:3),dist
+      double precision vecs(1:3,1:3),distvec(1:3),dist,gvecs(1:3,1:3)
       double precision coords1(3),coords2(3)
       integer i,j,k,l,ndangb !  i1,i2,i3,n_NN
       !character FMT1*1024,FMT2*1024,FMT3*1024
@@ -166,8 +166,7 @@
             end select
       case("plane","PLANE")
             nkeep=0
-            origin=origin(1)*vecs(1,:)+origin(2)*vecs(2,:)                &
-     &            +origin(3)*vecs(3,:)
+            if (talk) print'(8x,"normal vector:",3(F12.6))',origin
             select case(axisint)
             case(0)
               ! keep atoms below plane  
@@ -228,17 +227,169 @@
             case default
               nerr=nerr+1
               print ferrmssg, 
-     &           "Unknown parameter. Use 'above' or 'below'"
+     &           "Unknown parameter. cofima --help prints possible param  &
+     &eters"
               if(isopen12) write(12,ferrmssg) 
-     &           "Unknown parameter. Use 'above' or 'below'"     
+     &           "Unknown parameter. cofima --help prints possible param  &
+     &eters"
+              return
+            end select
+      case("dirplane","DIRPLANE")
+            nkeep=0
+            origin=origin(1)*vecs(1,:)+origin(2)*vecs(2,:)                &
+     &            +origin(3)*vecs(3,:)
+            if (talk) print'(8x,"normal vector:",3(F12.6))',origin
+            select case(axisint)
+            case(0)
+              ! keep atoms below plane  
+              ! "radius" is now distance from plane
+              ! "origin" is now n1,n2,n3 (vector normal to plane)
+              do i=1,natoms
+                distvec=atoms(i)%abswhere
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.le.0) then
+                  nkeep=nkeep+1
+                end if
+              end do
+              nremove=natoms-nkeep
+              allocate(keepatoms(nkeep),rmatoms(nremove))
+              j=0
+              jrm=0
+              do i=1,natoms
+                distvec=atoms(i)%abswhere 
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.le.0) then
+                  j=j+1
+                  keepatoms(j)=atoms(i)
+                end if
+                if(dist.gt.0) then
+                  jrm=jrm+1
+                  rmatoms(jrm)=atoms(i)
+                end if
+              end do
+            case(1) 
+              ! keep atoms above plane 
+              do i=1,natoms
+                distvec=atoms(i)%abswhere 
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.gt.0) then
+                  nkeep=nkeep+1
+                end if
+              end do
+              nremove=natoms-nkeep
+              allocate(keepatoms(nkeep),rmatoms(nremove))
+              j=0
+              jrm=0
+              do i=1,natoms
+                distvec=atoms(i)%abswhere 
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.gt.0) then
+                  j=j+1
+                  keepatoms(j)=atoms(i)
+                end if
+                if(dist.le.0) then
+                  jrm=jrm+1
+                  rmatoms(jrm)=atoms(i)
+                end if
+              end do
+            case default
+              nerr=nerr+1
+              print ferrmssg, 
+     &           "Unknown parameter. cofima --help prints possible param  &
+     &eters"
+              if(isopen12) write(12,ferrmssg) 
+     &           "Unknown parameter. cofima --help prints possible param  &
+     &eters"
+              return
+            end select
+      case("hklplane","HKLPLANE")
+            nkeep=0
+            call recipr_latt_vecs(vecs,gvecs)  
+            if (talk) print '(8x,"rec. latt. vecs:",/,8x,3(F12.6),/,8x,   &
+     &        3(F12.6),/,8x,3(F12.6))',gvecs(1,:),gvecs(2,:),gvecs(3,:)
+              if (talk) print '(8x,"h,k,l=",3(F12.6))',origin
+            origin=origin(1)*gvecs(1,:)+origin(2)*gvecs(2,:)              &
+     &            +origin(3)*gvecs(3,:)
+            if (talk) print'(8x,"normal vector:",3(F12.6))',origin
+            select case(axisint)
+            case(0)
+              ! keep atoms below plane  
+              ! "radius" is now distance from plane
+              ! "origin" is now h*b1,k*b2,l*b3 (b recipr latt vecs, vector normal to plane)
+              do i=1,natoms
+                distvec=atoms(i)%abswhere
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.le.0) then
+                  nkeep=nkeep+1
+                end if
+              end do
+              nremove=natoms-nkeep
+              allocate(keepatoms(nkeep),rmatoms(nremove))
+              j=0
+              jrm=0
+              do i=1,natoms
+                distvec=atoms(i)%abswhere 
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.le.0) then
+                  j=j+1
+                  keepatoms(j)=atoms(i)
+                end if
+                if(dist.gt.0) then
+                  jrm=jrm+1
+                  rmatoms(jrm)=atoms(i)
+                end if
+              end do
+            case(1) 
+              ! keep atoms above plane 
+              do i=1,natoms
+                distvec=atoms(i)%abswhere 
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.gt.0) then
+                  nkeep=nkeep+1
+                end if
+              end do
+              nremove=natoms-nkeep
+              allocate(keepatoms(nkeep),rmatoms(nremove))
+              j=0
+              jrm=0
+              do i=1,natoms
+                distvec=atoms(i)%abswhere 
+                distvec=distvec-cuthere*origin/norm2(origin)
+                dist=dot_product(distvec,origin/norm2(origin))
+                if(dist.gt.0) then
+                  j=j+1
+                  keepatoms(j)=atoms(i)
+                end if
+                if(dist.le.0) then
+                  jrm=jrm+1
+                  rmatoms(jrm)=atoms(i)
+                end if
+              end do
+            case default
+              nerr=nerr+1
+              print ferrmssg, 
+     &           "Unknown parameter. cofima --help prints possible param  &
+     &eters"
+              if(isopen12) write(12,ferrmssg) 
+     &           "Unknown parameter. cofima --help prints possible param  &
+     &eters"
               return
             end select
       case default
           nerr=nerr+1
-          print ferrmssg, "Unknown parameter. Use 'above','below', or 's
-     &phere'"
+          print ferrmssg, 
+     &           "Unknown parameter. cofima --help prints possible param  &
+     &eters"
           if(isopen12) write(12,ferrmssg) 
-     &       "Unknown parameter. Use 'above', 'below', or 'sphere'"     
+     &           "Unknown parameter. cofima --help prints possible param  &
+     &eters"
           return
       end select
 

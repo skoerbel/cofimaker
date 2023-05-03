@@ -52,6 +52,10 @@ c---------------------------------------------------------------------
       case("gulp","GULP","gin","GIN","res","RES")
             call write_gin(foutcoords,atoms,natoms,species,nspecies,
      &                        vecs)
+      case("gulp_short","GULP_SHORT","gin_short","GIN_SHORT",             &
+     &     "res_short","RES_SHORT")
+            call write_gin_short(foutcoords,atoms,natoms,species,         &
+     &      nspecies,vecs)
       case("data","DATA","lmpdata","LMPDATA","lmp","LMP")
             call write_lmpdata(foutcoords,atoms,natoms,species,nspecies,
      &                        vecs)
@@ -420,7 +424,115 @@ c---------------------------------------------------------------------
       else
             print ferrmssg,'Error during writing output file.'
       end if
-      end subroutine
+
+      end subroutine write_gin
+      
+c---------------------------------------------------------------------
+
+      subroutine write_gin_short(foutcoords,atoms,natoms,species,         &
+     &                 nspecies,vecs)
+      ! this subroutine writes coordinates to a gin
+      ! file (GULP input file). 
+      
+      use defs
+      implicit none
+     
+      integer natoms,nspecies
+      character(len=*) foutcoords
+      double precision vecs(1:3,1:3)
+      type(atom)  :: atoms(natoms)
+      type(element) :: species(nspecies)
+
+      ! local variables
+      logical isopen12,done
+      integer i,j
+      double precision alat(1:3),angles(1:3)
+
+      INQUIRE (unit=12, opened=isopen12)
+      if(isopen12) then
+            write(12,fsubstart) trim(adjustl('write_gin_short'))
+      else
+            print fsubstart, trim(adjustl('write_gin_short'))
+      end if
+      open(51,file=foutcoords,status='replace',err=100)
+      write(51,'("#")')
+      write(51,'("opti qok")')
+      write(51,'("#")')
+      write(51,'("#vectors")')
+      do i=1,3
+        write(51,'("#",3(F22.16))') vecs(i,1:3)
+      end do
+      write(51,'("#")') 
+      write(51,'("cell")')
+      do i=1,3
+        alat(i)=sqrt(vecs(i,1)**2+vecs(i,2)**2+vecs(i,3)**2)
+      end do
+      angles(1)=acos((vecs(2,1)*vecs(3,1)+vecs(2,2)*vecs(3,2)
+     &          +vecs(2,3)*vecs(3,3))/(alat(2)*alat(3)))*180.0D0/Pi
+      angles(2)=acos((vecs(1,1)*vecs(3,1)+vecs(1,2)*vecs(3,2)
+     &          +vecs(1,3)*vecs(3,3))/(alat(1)*alat(3)))*180.0D0/Pi
+      angles(3)=acos((vecs(1,1)*vecs(2,1)+vecs(1,2)*vecs(2,2)
+     &          +vecs(1,3)*vecs(2,3))/(alat(1)*alat(2)))*180.0D0/Pi
+      write(51,'(6(F11.6)," 1 1 1 1 1 1")') alat(1:3),angles(1:3)
+      write(51,'("frac")')
+      !
+      ! begin write coordinates
+      !
+      do i=1,natoms
+        write(51,1000) atoms(i)%name(1:2),atoms(i)%core(1:4),             &
+     &      atoms(i)%where(1:3),atoms(i)%charge
+!     &      atoms(i)%where(1:3),atoms(i)%charge,'1.0 0.0 1 1 1'
+      end do
+      !
+      ! end write coordinates
+      !
+      ! 
+      ! begin write charges
+      !
+      write(51,'("species",I4)')nspecies*2
+      do i=1,nspecies
+        done=.false.
+        do j=1,natoms
+          if (atoms(j)%name(1:2).eq.species(i)%name(1:2).and..not.done)   &
+     &    then
+            if (atoms(j)%core(1:4).eq."core") write(51,'(A2,5x,A4,F12.6)  &
+     &') atoms(j)%name(1:2),atoms(j)%core,atoms(j)%charge
+              done=.true.
+          end if
+        end do 
+      end do
+      do i=1,nspecies
+        done=.false.
+        do j=1,natoms
+          if (atoms(j)%name(1:2).eq.species(i)%name(1:2).and..not.done)   &
+     &    then
+            if (atoms(j)%core(1:4).eq."shel") write(51,'(A2,5x,A4,F12.6)  &
+     &') atoms(j)%name(1:2),atoms(j)%core,atoms(j)%charge
+              done=.true.
+          end if
+        end do 
+      end do
+      ! 
+      ! end write charges
+      !
+      close(51)
+
+! 1000 format(A2,2x,A4,2x,3(F20.16),2x,F10.6,1x,A13)
+ 1000 format(A2,4x,A4,1x,3(F9.6,1x),F10.7,1x,"1.00 0.00 1 1 1  ")
+      if(isopen12) then
+            write(12,fsubendext),'write_gin_short'
+      else
+            print fsubendext,'write_gin_short'
+      end if
+      return
+100   nerr=nerr+1
+      if(isopen12) then
+            write(12,ferrmssg),'Error during writing output file.'
+      else
+            print ferrmssg,'Error during writing output file.'
+      end if
+
+      end subroutine write_gin_short
       
 c---------------------------------------------------------------------
 

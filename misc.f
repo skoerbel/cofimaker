@@ -1843,6 +1843,58 @@ c---------------------------------------------------------------------
       end subroutine
 
 c---------------------------------------------------------------------
+      function mat_times_vec(matrix,vec)
+      ! multiplies a vector with a matrix.
+     
+      use defs
+      implicit none
+
+      ! variables
+      double precision, DIMENSION(3) :: mat_times_vec
+      double precision, intent(in) :: matrix(1:3,1:3)
+      double precision, intent(inout) :: vec(1:3)
+ 
+      mat_times_vec=0.0D0
+      mat_times_vec(1)=vec(1)*matrix(1,1)
+     &          +vec(2)*matrix(1,2)
+     &          +vec(3)*matrix(1,3)
+      mat_times_vec(2)=vec(1)*matrix(2,1)
+     &          +vec(2)*matrix(2,2)
+     &          +vec(3)*matrix(2,3)
+      mat_times_vec(3)=vec(1)*matrix(3,1)
+     &          +vec(2)*matrix(3,2)
+     &          +vec(3)*matrix(3,3)
+      
+      end function mat_times_vec
+
+c---------------------------------------------------
+!      
+!      subroutine mat_times_vec(matrix,vec,vec_out)
+!      ! multiplies a vector with a matrix.
+!     
+!      use defs
+!      implicit none
+!
+!      ! variables
+!      double precision, DIMENSION(3) :: mat_times_vec
+!      double precision, intent(in) :: matrix(1:3,1:3)
+!      double precision, intent(in) :: vec(1:3)
+!      double precision, intent(out) :: vec_out(1:3)
+! 
+!      vec_out=0.0D0
+!      vec_out(1)=vec(1)*matrix(1,1)
+!     &          +vec(2)*matrix(1,2)
+!     &          +vec(3)*matrix(1,3)
+!      vec_out(2)=vec(1)*matrix(2,1)
+!     &          +vec(2)*matrix(2,2)
+!     &          +vec(3)*matrix(2,3)
+!      vec_out(3)=vec(1)*matrix(3,1)
+!     &          +vec(2)*matrix(3,2)
+!     &          +vec(3)*matrix(3,3)
+!      
+!      end subroutine mat_times_vec
+!
+c-------------------------------------------------------      
 
       subroutine transpon_matrix(inmat,outmat)
       
@@ -3114,16 +3166,17 @@ c---------------------------------------------------------------------
           end do
           close(51)
         ! print distribution on fine grid with gaussian broadening
-          call broaden(exenfs,oscifs,broad,.false.,0.0D0,oscifbrds)
+          call broaden(exenfs,oscifs,broad,.false.,0.0D0,oscifbrds,       &
+     &         .false.)
           call broaden(exenfs,tmomf(:,1),broad,.false.,0.0D0,             &
-     &        tmom_brd_temp)
+     &        tmom_brd_temp,.false.)
           allocate(tmom_brd(size(tmom_brd_temp),3))
           tmom_brd(:,1)=tmom_brd_temp
           call broaden(exenfs,tmomf(:,2),broad,.false.,0.0D0,             &
-     &        tmom_brd_temp)
+     &        tmom_brd_temp,.false.)
           tmom_brd(:,2)=tmom_brd_temp
           call broaden(exenfs,tmomf(:,3),broad,.false.,0.0D0,             &
-     &        tmom_brd_temp)
+     &        tmom_brd_temp,.false.)
           tmom_brd(:,3)=tmom_brd_temp
           open(51,file="SPECTRUM.SINGLETS.BRD.DAT",status="replace")
           write(51,'("# Excit. energy (eV), Oscill. strength with Gaussi
@@ -3159,8 +3212,8 @@ c---------------------------------------------------------------------
           end do
           close(51)
         ! print distribution on fine grid with gaussian broadening
-          call broaden(exenft,oscift,broad,.false.,0.0D0,oscifbrdt
-     &       )
+          call broaden(exenft,oscift,broad,.false.,0.0D0,oscifbrdt,
+     &      .false. )
           open(51,file="SPECTRUM.TRIPLETS.BRD.DAT",status="replace")
           write(51,'("# Excit. energy (eV), Oscill. strength with Gaussi
      &an broadnening by)",F10.7)')broad
@@ -3256,8 +3309,8 @@ c---------------------------------------------------------------------
           end do
           close(51)
         ! print distribution on fine grid with gaussian broadening
-          call broaden(exenfs,oscifs,broad,.false.,0.0D0,oscifbrds
-     &      )
+          call broaden(exenfs,oscifs,broad,.false.,0.0D0,oscifbrds,
+     &     .false. )
           open(51,file="SPECTRUM.SINGLETS.BRD.DAT",status="replace")
           write(51,'("# Excit. energy (eV), Oscill. strength with Gaussi
      &an broadnening by)",F10.7)')broad
@@ -3292,7 +3345,8 @@ c---------------------------------------------------------------------
           end do
           close(51)
         ! print distribution on fine grid with gaussian broadening
-          call broaden(exenft,oscift,broad,.false.,0.0D0,oscifbrdt)
+          call broaden(exenft,oscift,broad,.false.,0.0D0,oscifbrdt,       &
+     &         .false.)
           open(51,file="SPECTRUM.TRIPLETS.BRD.DAT",status="replace")
           write(51,'("# Excit. energy (eV), Oscill. strength with Gaussi
      &an broadnening by)",F10.7)')broad
@@ -3377,7 +3431,8 @@ c---------------------------------------------------------------------
           end do
           close(51)
         ! print distribution on fine grid with gaussian broadening
-          call broaden(exenfs,oscifs,broad,.false.,0.0D0,oscifbrds)
+          call broaden(exenfs,oscifs,broad,.false.,0.0D0,oscifbrds,       &
+     & .false.)
           open(51,file="SPECTRUM.SINGLETS.BRD.DAT",status="replace")
           write(51,'("# Excit. energy (eV), Oscill. strength with Gaussi
      &an broadnening by)",F10.7)')broad
@@ -3413,7 +3468,8 @@ c---------------------------------------------------------------------
           end do
           close(51)
         ! print distribution on fine grid with gaussian broadening
-          call broaden(exenft,oscift,broad,.false.,0.0D0,oscifbrdt)
+          call broaden(exenft,oscift,broad,.false.,0.0D0,oscifbrdt,       &
+     &   .false.)
           open(51,file="SPECTRUM.TRIPLETS.BRD.DAT",status="replace")
           write(51,'("# Excit. energy (eV), Oscill. strength with Gaussi
      &an broadnening by)",F10.7)')broad
@@ -3519,8 +3575,8 @@ c---------------------------------------------------------------------
 
 c---------------------------------------------------------------------------------------------------
 
-      subroutine broaden(grid,val,brd,periodic,period,brdval
-     &     )
+      subroutine broaden(grid,val,brd,periodic,period,brdval,
+     &  continuous )
       ! broadens a given distribution. If the distribution is periodic (periodic=.true.), 
       ! the periodic images at +- period are taken into account.
       use defs
@@ -3528,7 +3584,7 @@ c-------------------------------------------------------------------------------
 
 
       double precision, intent(in) :: grid(:),val(:),brd,period
-      logical, intent(in) :: periodic
+      logical, intent(in) :: periodic,continuous
       ! local variables
       double precision, allocatable :: brdval(:)
       integer igrid1,igrid2,dimgrid
@@ -3579,6 +3635,7 @@ c-------------------------------------------------------------------------------
       end do
       intbrd=intbrd+brdval(dimgrid)*(grid(dimgrid)-grid(dimgrid-1))
       print '(8x,"Integ. over broadened distr.:",F15.5)',intbrd
+      if (continuous) brdval=brdval*intorig/intbrd
       print fsubendext,'broaden'
       return
 
@@ -3589,15 +3646,176 @@ c-------------------------------------------------------------------------------
 
       end subroutine broaden
       
+c---------------------------------------------------------------------------------------------------
+
+      subroutine broaden_lin(grid,val,brd1,brd2,periodic,period,brdval,
+     &  continuous   )
+      ! broadens a given distribution. If the distribution is periodic (periodic=.true.), 
+      ! the periodic images at +- period are taken into account.
+      use defs
+      implicit none
+
+
+      double precision, intent(in) :: grid(:),val(:),brd1,brd2,period
+      logical, intent(in) :: periodic,continuous
+      ! local variables
+      double precision, allocatable :: brdval(:)
+      integer igrid1,igrid2,dimgrid
+      double precision intorig,intbrd,sumorig,brd
+       
+      print fsubstart,"broaden_lin"
+      print '(8x,"periodic distribution:",L8)',periodic 
+      if(periodic) print '(8x,F15.10)',period
+      print '(8x,"broadening by ",F15.10," - ",F15.10)',brd1,brd2
+      dimgrid=size(grid)
+      if (size(val).ne.dimgrid) goto 100
+      if (allocated(brdval)) deallocate(brdval)
+      allocate(brdval(dimgrid))
+      
+      ! broaden distribution
+      brdval=0.0D0
+      do igrid1=1,dimgrid 
+        do igrid2=1,dimgrid
+          brd=brd1+(grid(igrid2)-grid(1))                                 &
+     &       /(grid(dimgrid)-grid(1))*(brd2-brd1)
+          if(brd.le.1D-4) then
+            if(igrid2==igrid1)brdval(igrid1)=brdval(igrid1)+val(igrid2)
+          else
+            brdval(igrid1)=brdval(igrid1)
+     &        +val(igrid2)*exp(-((grid(igrid2)-grid(igrid1))
+     &        /brd)**2)/brd          
+            if (periodic) then
+              brdval(igrid1)=brdval(igrid1)
+     &          +val(igrid2)*exp(-((grid(igrid2)-grid(igrid1)+period)
+     &          /brd)**2)/brd          
+              brdval(igrid1)=brdval(igrid1)
+     &          +val(igrid2)*exp(-((grid(igrid2)-grid(igrid1)-period)
+     &          /brd)**2)/brd          
+            end if ! periodic
+          end if ! brd<=0
+        end do ! igrid2
+      end do ! igrid1
+      brdval=brdval/sqrt(Pi)
+      ! print sum over original and integral over original and broadened distr.
+      sumorig=0.0D0
+      do igrid1=1,dimgrid
+        sumorig=sumorig+val(igrid1)
+      end do
+      print '(8x,"Sum over original distr.:",F15.5)',sumorig
+      intorig=0.0D0
+      do igrid1=1,dimgrid-1
+        intorig=intorig+val(igrid1)*(grid(igrid1+1)-grid(igrid1))
+      end do
+      intorig=intorig+val(dimgrid)*(grid(dimgrid)-grid(dimgrid-1))
+      print '(8x,"Integ. over original distr.:",F15.5)',intorig
+      intbrd=0.0D0
+      do igrid1=1,dimgrid-1
+        intbrd=intbrd+brdval(igrid1)*(grid(igrid1+1)-grid(igrid1))
+      end do
+      intbrd=intbrd+brdval(dimgrid)*(grid(dimgrid)-grid(dimgrid-1))
+      print '(8x,"Integ. over broadened distr.:",F15.5)',intbrd
+      if (continuous) brdval=brdval*intorig/intbrd
+      print fsubendext,'broaden_lin'
+      return
+
+! Error messages
+100   nerr=nerr+1
+      print ferrmssg,"Dim. of grid differs from that of field."
+      return
+
+      end subroutine broaden_lin
+      
+c---------------------------------------------------------------------------------------------------
+
+      subroutine broaden_quad(grid,val,brd1,brd2,periodic,period,brdval,
+     & continuous)
+      ! broadens a given distribution, broadening changes
+      ! quadratically. If the distribution is periodic (periodic=.true.), 
+      ! the periodic images at +- period are taken into account.
+      use defs
+      implicit none
+
+
+      double precision, intent(in) :: grid(:),val(:),brd1,brd2,period
+      logical, intent(in) :: periodic,continuous
+      ! local variables
+      double precision, allocatable :: brdval(:)
+      integer igrid1,igrid2,dimgrid
+      double precision intorig,intbrd,sumorig,brd
+       
+      print fsubstart,"broaden_quad"
+      print '(8x,"periodic distribution:",L8)',periodic 
+      if(periodic) print '(8x,F15.10)',period
+      print '(8x,"broadening by ",F15.10," - ",F15.10)',brd1,brd2
+      dimgrid=size(grid)
+      if (size(val).ne.dimgrid) goto 100
+      if (allocated(brdval)) deallocate(brdval)
+      allocate(brdval(dimgrid))
+      
+      ! broaden distribution
+      brdval=0.0D0
+      do igrid1=1,dimgrid 
+        do igrid2=1,dimgrid
+          brd=sqrt(brd1)+(grid(igrid2)-grid(1))                           &
+     &       /(grid(dimgrid)-grid(1))*(sqrt(brd2)-sqrt(brd1))
+          brd=brd**2
+          if(brd.le.1D-4) then
+            if(igrid2==igrid1)brdval(igrid1)=brdval(igrid1)+val(igrid2)
+          else
+            brdval(igrid1)=brdval(igrid1)
+     &        +val(igrid2)*exp(-((grid(igrid2)-grid(igrid1))
+     &        /brd)**2)/brd          
+            if (periodic) then
+              brdval(igrid1)=brdval(igrid1)
+     &          +val(igrid2)*exp(-((grid(igrid2)-grid(igrid1)+period)
+     &          /brd)**2)/brd          
+              brdval(igrid1)=brdval(igrid1)
+     &          +val(igrid2)*exp(-((grid(igrid2)-grid(igrid1)-period)
+     &          /brd)**2)/brd          
+            end if ! periodic
+          end if ! brd<=0
+        end do ! igrid2
+      end do ! igrid1
+      brdval=brdval/sqrt(Pi)
+      ! print sum over original and integral over original and broadened distr.
+      sumorig=0.0D0
+      do igrid1=1,dimgrid
+        sumorig=sumorig+val(igrid1)
+      end do
+      print '(8x,"Sum over original distr.:",F15.5)',sumorig
+      intorig=0.0D0
+      do igrid1=1,dimgrid-1
+        intorig=intorig+val(igrid1)*(grid(igrid1+1)-grid(igrid1))
+      end do
+      intorig=intorig+val(dimgrid)*(grid(dimgrid)-grid(dimgrid-1))
+      print '(8x,"Integ. over original distr.:",F15.5)',intorig
+      intbrd=0.0D0
+      do igrid1=1,dimgrid-1
+        intbrd=intbrd+brdval(igrid1)*(grid(igrid1+1)-grid(igrid1))
+      end do
+      intbrd=intbrd+brdval(dimgrid)*(grid(dimgrid)-grid(dimgrid-1))
+      print '(8x,"Integ. over broadened distr.:",F15.5)',intbrd
+      if (continuous) brdval=brdval*intorig/intbrd
+      print fsubendext,'broaden_quad'
+      return
+
+! Error messages
+100   nerr=nerr+1
+      print ferrmssg,"Dim. of grid differs from that of field."
+      return
+
+      end subroutine broaden_quad
+      
 c---------------------------------------------------------------------
 
       subroutine broaden_dist(fname,columnx,columnv,periodic,period,      &
-     &                        brd)
+     &                        brd,lcontinuous)
       use defs, only : fsubstart,fsubendext,ferrmssg,nerr
       implicit none
       character(len=*), intent(in) :: fname
       integer, intent(in) :: columnx,columnv
       logical, intent(in) :: periodic
+      logical, intent(in):: lcontinuous
       double precision, intent(in) :: period
       double precision, intent(in) :: brd
       ! internal variables :
@@ -3645,20 +3863,28 @@ c---------------------------------------------------------------------
       !
       close(51)
       ! 
-      ! begin map to equidistant grid
-      !
       xmin=minval(dataset(:,1))
       xmax=maxval(dataset(:,1))
+      !
+      ! begin map to equidistant grid
+      !
       binwidth=brd/5.0d0
-      call finegrid(dataset(:,1),dataset(:,2),xmin-10.0D0*brd,
-     &    xmax+10.0D0*brd,binwidth,equix,equiv)
+      if (.not.lcontinuous) then
+        call finegrid(dataset(:,1),dataset(:,2),xmin-10.0D0*brd,
+     &      xmax+10.0D0*brd,binwidth,equix,equiv)
       ! 
       ! end map to equidistant grid
       !
+      else
+        allocate(equix(ndatalines),equiv(ndatalines))      
+        equix=dataset(:,1)
+        equiv=dataset(:,2)
+      end if ! .not.lcontinuous
       !
 !      call broaden(dataset(:,1),dataset(:,2),brd,periodic,period,         &
 !     &     broadened_dist)
-      call broaden(equix,equiv,brd,periodic,period,broadened_dist)
+      call broaden(equix,equiv,brd,periodic,period,broadened_dist,        &
+     & lcontinuous)
       !
       fname2=''
       fname2(1:len(fname))=fname(1:len(fname))
@@ -3690,6 +3916,429 @@ c---------------------------------------------------------------------
       !
       end subroutine broaden_dist
 
+!c---------------------------------------------------------------------
+!
+!      subroutine broaden_continuous_dist(fname,columnx,columnv,periodic,  &
+!     &           period,brd)
+!      use defs, only : fsubstart,fsubendext,ferrmssg,nerr
+!      implicit none
+!      character(len=*), intent(in) :: fname
+!      integer, intent(in) :: columnx,columnv
+!      logical, intent(in) :: periodic
+!      double precision, intent(in) :: period
+!      double precision, intent(in) :: brd
+!      ! internal variables :
+!      integer ndatalines,idataline,i
+!      character line*1024,lline*1024
+!      double precision, allocatable :: dataset(:,:)
+!      character*1024, allocatable :: lines(:,:),words(:)
+!      double precision, allocatable :: broadened_dist(:)
+!      double precision, allocatable :: equix(:),equiv(:)
+!      double precision xmin,xmax,binwidth
+!      character(len=1024) :: fname2
+!      !
+!      print fsubstart,'broaden_continuous_dist'
+!      !
+!      open(51,file=fname,status='old',err=100)
+!      rewind(51)
+!      ! count data lines
+!      ndatalines=0
+!10    read(51,'(A1024)',end=20,err=100) line
+!      lline=adjustl(line)
+!      if(lline(1:1).eq."#".or.len_trim(lline).eq.0) goto 10   ! ignore commented and empty lines  
+!      ndatalines=ndatalines+1
+!      goto 10
+!
+!20    continue
+!      allocate(dataset(ndatalines,2))!,dumdata(1:ncolumns))
+!      !allocate(broadened_dist(ndatalines))
+!      !allocate(lines(ndatalines,2))
+!      rewind (51)
+!
+!      ! read data
+!      idataline=1
+!30    read(51,'(A1024)',end=40,err=100) line(1:1024)
+!      lline=adjustl(line)
+!      if(lline(1:1).eq."#".or.len_trim(lline).eq.0) goto 30   ! ignore commented and empty lines  
+!      call string2words(lline,words)
+!      !lines(idataline,1)=words(columnx)
+!      !lines(idataline,2)=words(columnv)
+!      read(words(columnx),*) dataset(idataline,1)
+!      read(words(columnv),*) dataset(idataline,2)
+!      idataline=idataline+1
+!      goto 30
+!
+!40    continue
+!      !
+!      close(51)
+!      ! 
+!      ! begin map to equidistant grid
+!      !
+!      xmin=minval(dataset(:,1))
+!      xmax=maxval(dataset(:,1))
+!      binwidth=brd/5.0d0
+!!      call finegrid(dataset(:,1),dataset(:,2),xmin-10.0D0*brd,
+!!     &    xmax+10.0D0*brd,binwidth,equix,equiv)
+!      ! 
+!      ! end map to equidistant grid
+!      !
+!      !
+!!      call broaden(dataset(:,1),dataset(:,2),brd,periodic,period,         &
+!!     &     broadened_dist)
+!      call broaden(dataset(:,1),dataset(:,2),brd,periodic,period,         &
+!     &broadened_dist,.true.)
+!      !
+!      fname2=''
+!      fname2(1:len(fname))=fname(1:len(fname))
+!      fname2(len_trim(fname)+1:len_trim(fname)+10)='.BROADENED'
+!      print '(8x,"Writing broadened distibution to file ",A)',            &
+!     & trim(adjustl(fname2))
+!!      print '(8x,I0," points in broadened distribution")',                &
+!!     &          size(broadened_dist)
+!      open(51,file=fname2,status='replace')
+!!      do idataline=1,ndatalines
+!!        write(51,'(2(F20.10,5x))') dataset(idataline,1),                  &
+!!     &       broadened_dist(idataline)
+!!      end do
+!      do i=1,size(dataset,1)
+!        write(51,'(2(F20.10,5x))') dataset(i,1),broadened_dist(i)
+!      end do ! i
+!      !  
+!      close(51)
+!      !
+!      print fsubendext,'broaden_continuous_dist'
+!      !
+!      return
+!      !
+!      ! Error messages
+!100   nerr=nerr+1
+!      close(51)
+!      print ferrmssg,"Dim. of grid differs from that of field."
+!      return
+!      !
+!      end subroutine broaden_continuous_dist
+!
+c---------------------------------------------------------------------
+
+      subroutine broaden_lin_dist(fname,columnx,columnv,periodic,period,  &
+     &                        brd1,brd2,lcontinuous)
+      use defs, only : fsubstart,fsubendext,ferrmssg,nerr
+      implicit none
+      character(len=*), intent(in) :: fname
+      integer, intent(in) :: columnx,columnv
+      logical, intent(in) :: periodic,lcontinuous
+      double precision, intent(in) :: period
+      double precision, intent(in) :: brd1,brd2
+      ! internal variables :
+      integer ndatalines,idataline,i
+      character line*1024,lline*1024
+      double precision, allocatable :: dataset(:,:)
+      character*1024, allocatable :: lines(:,:),words(:)
+      double precision, allocatable :: broadened_dist(:)
+      double precision, allocatable :: equix(:),equiv(:)
+      double precision xmin,xmax,binwidth,brd_av
+      character(len=1024) :: fname2
+      !
+      print fsubstart,'broaden_lin_dist'
+      !
+      open(51,file=fname,status='old',err=100)
+      rewind(51)
+      ! count data lines
+      ndatalines=0
+10    read(51,'(A1024)',end=20,err=100) line
+      lline=adjustl(line)
+      if(lline(1:1).eq."#".or.len_trim(lline).eq.0) goto 10   ! ignore commented and empty lines  
+      ndatalines=ndatalines+1
+      goto 10
+
+20    continue
+      allocate(dataset(ndatalines,2))!,dumdata(1:ncolumns))
+      !allocate(broadened_dist(ndatalines))
+      !allocate(lines(ndatalines,2))
+      rewind (51)
+
+      ! read data
+      idataline=1
+30    read(51,'(A1024)',end=40,err=100) line(1:1024)
+      lline=adjustl(line)
+      if(lline(1:1).eq."#".or.len_trim(lline).eq.0) goto 30   ! ignore commented and empty lines  
+      call string2words(lline,words)
+      !lines(idataline,1)=words(columnx)
+      !lines(idataline,2)=words(columnv)
+      read(words(columnx),*) dataset(idataline,1)
+      read(words(columnv),*) dataset(idataline,2)
+      idataline=idataline+1
+      goto 30
+
+40    continue
+      !
+      close(51)
+      !
+      if (.not.lcontinuous) then
+        !
+        ! begin map to equidistant grid
+        !
+        xmin=minval(dataset(:,1))
+        xmax=maxval(dataset(:,1))
+        brd_av=(brd1+brd2)/2.0d0
+        binwidth=brd_av/5.0d0
+        call finegrid(dataset(:,1),dataset(:,2),xmin-10.0D0*brd1,
+     &    xmax+10.0D0*brd2,binwidth,equix,equiv)
+        ! 
+        ! end map to equidistant grid
+        !
+      else
+        allocate(equix(ndatalines),equiv(ndatalines))      
+        equix=dataset(:,1)
+        equiv=dataset(:,2)
+      end if ! .not.lcontinous  
+      !
+!      call broaden(dataset(:,1),dataset(:,2),brd,periodic,period,         &
+!     &     broadened_dist)
+      call broaden_lin(equix,equiv,brd1,brd2,periodic,period,             &
+     &broadened_dist,lcontinuous)
+      !
+      fname2=''
+      fname2(1:len(fname))=fname(1:len(fname))
+      fname2(len_trim(fname)+1:len_trim(fname)+10)='.BROADENED'
+      print '(8x,"Writing broadened distibution to file ",A)',            &
+     & trim(adjustl(fname2))
+!      print '(8x,I0," points in broadened distribution")',                &
+!     &          size(broadened_dist)
+      open(51,file=fname2,status='replace')
+!      do idataline=1,ndatalines
+!        write(51,'(2(F20.10,5x))') dataset(idataline,1),                  &
+!     &       broadened_dist(idataline)
+!      end do
+      do i=1,size(equix)
+        write(51,'(2(F20.10,5x))') equix(i),broadened_dist(i)
+      end do ! i
+      !  
+      close(51)
+      !
+      print fsubendext,'broaden_lin_dist'
+      !
+      return
+      !
+      ! Error messages
+100   nerr=nerr+1
+      close(51)
+      print ferrmssg,"Dim. of grid differs from that of field."
+      return
+      !
+      end subroutine broaden_lin_dist
+
+c---------------------------------------------------------------------
+!
+!      subroutine broaden_lin_continuous_dist(fname,columnx,columnv,       &
+!     &   periodic,period, brd1,brd2)
+!      use defs, only : fsubstart,fsubendext,ferrmssg,nerr
+!      implicit none
+!      character(len=*), intent(in) :: fname
+!      integer, intent(in) :: columnx,columnv
+!      logical, intent(in) :: periodic
+!      double precision, intent(in) :: period
+!      double precision, intent(in) :: brd1,brd2
+!      ! internal variables :
+!      integer ndatalines,idataline,i
+!      character line*1024,lline*1024
+!      double precision, allocatable :: dataset(:,:)
+!      character*1024, allocatable :: lines(:,:),words(:)
+!      double precision, allocatable :: broadened_dist(:)
+!      double precision, allocatable :: equix(:),equiv(:)
+!      double precision xmin,xmax,binwidth,brd_av
+!      character(len=1024) :: fname2
+!      !
+!      print fsubstart,'broaden_lin_continuous_dist'
+!      !
+!      open(51,file=fname,status='old',err=100)
+!      rewind(51)
+!      ! count data lines
+!      ndatalines=0
+!10    read(51,'(A1024)',end=20,err=100) line
+!      lline=adjustl(line)
+!      if(lline(1:1).eq."#".or.len_trim(lline).eq.0) goto 10   ! ignore commented and empty lines  
+!      ndatalines=ndatalines+1
+!      goto 10
+!
+!20    continue
+!      allocate(dataset(ndatalines,2))!,dumdata(1:ncolumns))
+!      !allocate(broadened_dist(ndatalines))
+!      !allocate(lines(ndatalines,2))
+!      rewind (51)
+!
+!      ! read data
+!      idataline=1
+!30    read(51,'(A1024)',end=40,err=100) line(1:1024)
+!      lline=adjustl(line)
+!      if(lline(1:1).eq."#".or.len_trim(lline).eq.0) goto 30   ! ignore commented and empty lines  
+!      call string2words(lline,words)
+!      !lines(idataline,1)=words(columnx)
+!      !lines(idataline,2)=words(columnv)
+!      read(words(columnx),*) dataset(idataline,1)
+!      read(words(columnv),*) dataset(idataline,2)
+!      idataline=idataline+1
+!      goto 30
+!
+!40    continue
+!      !
+!      close(51)
+!      ! 
+!      ! begin map to equidistant grid
+!      !
+!!      xmin=minval(dataset(:,1))
+!!      xmax=maxval(dataset(:,1))
+!!      brd_av=(brd1+brd2)/2.0d0
+!!      binwidth=brd_av/5.0d0
+!!      call finegrid(dataset(:,1),dataset(:,2),xmin-10.0D0*brd1,
+!!     &    xmax+10.0D0*brd2,binwidth,equix,equiv)
+!!      ! 
+!      ! end map to equidistant grid
+!      !
+!      !
+!!      call broaden(dataset(:,1),dataset(:,2),brd,periodic,period,         &
+!!     &     broadened_dist)
+!      call broaden_lin(dataset(:,1),dataset(:,2),brd1,brd2,periodic,      &
+!     &period,broadened_dist,.true.)
+!      !
+!      fname2=''
+!      fname2(1:len(fname))=fname(1:len(fname))
+!      fname2(len_trim(fname)+1:len_trim(fname)+10)='.BROADENED'
+!      print '(8x,"Writing broadened distibution to file ",A)',            &
+!     & trim(adjustl(fname2))
+!!      print '(8x,I0," points in broadened distribution")',                &
+!!     &          size(broadened_dist)
+!      open(51,file=fname2,status='replace')
+!!      do idataline=1,ndatalines
+!!        write(51,'(2(F20.10,5x))') dataset(idataline,1),                  &
+!!     &       broadened_dist(idataline)
+!!      end do
+!      do i=1,size(dataset,1)
+!        write(51,'(2(F20.10,5x))') dataset(i,1),broadened_dist(i)
+!      end do ! i
+!      !  
+!      close(51)
+!      !
+!      print fsubendext,'broaden_lin_continuous_dist'
+!      !
+!      return
+!      !
+!      ! Error messages
+!100   nerr=nerr+1
+!      close(51)
+!      print ferrmssg,"Dim. of grid differs from that of field."
+!      return
+!      !
+!      end subroutine broaden_lin_continuous_dist
+!
+c---------------------------------------------------------------------
+
+      subroutine broaden_quad_dist(fname,columnx,columnv,                 &
+     &   periodic,period, brd1,brd2,lcontinuous)
+      use defs, only : fsubstart,fsubendext,ferrmssg,nerr
+      implicit none
+      character(len=*), intent(in) :: fname
+      integer, intent(in) :: columnx,columnv
+      logical, intent(in) :: periodic,lcontinuous
+      double precision, intent(in) :: period
+      double precision, intent(in) :: brd1,brd2
+      ! internal variables :
+      integer ndatalines,idataline,i
+      character line*1024,lline*1024
+      double precision, allocatable :: dataset(:,:)
+      character*1024, allocatable :: lines(:,:),words(:)
+      double precision, allocatable :: broadened_dist(:)
+      double precision, allocatable :: equix(:),equiv(:)
+      double precision xmin,xmax,binwidth,brd_av
+      character(len=1024) :: fname2
+      !
+      print fsubstart,'broaden_quad_dist'
+      !
+      open(51,file=fname,status='old',err=100)
+      rewind(51)
+      ! count data lines
+      ndatalines=0
+10    read(51,'(A1024)',end=20,err=100) line
+      lline=adjustl(line)
+      if(lline(1:1).eq."#".or.len_trim(lline).eq.0) goto 10   ! ignore commented and empty lines  
+      ndatalines=ndatalines+1
+      goto 10
+
+20    continue
+      allocate(dataset(ndatalines,2))!,dumdata(1:ncolumns))
+      !allocate(broadened_dist(ndatalines))
+      !allocate(lines(ndatalines,2))
+      rewind (51)
+
+      ! read data
+      idataline=1
+30    read(51,'(A1024)',end=40,err=100) line(1:1024)
+      lline=adjustl(line)
+      if(lline(1:1).eq."#".or.len_trim(lline).eq.0) goto 30   ! ignore commented and empty lines  
+      call string2words(lline,words)
+      !lines(idataline,1)=words(columnx)
+      !lines(idataline,2)=words(columnv)
+      read(words(columnx),*) dataset(idataline,1)
+      read(words(columnv),*) dataset(idataline,2)
+      idataline=idataline+1
+      goto 30
+
+40    continue
+      !
+      close(51)
+      ! 
+      if (.not.lcontinuous) then
+        !
+        ! begin map to equidistant grid
+        !
+        xmin=minval(dataset(:,1))
+        xmax=maxval(dataset(:,1))
+        brd_av=(brd1+brd2)/2.0d0
+        binwidth=brd_av/5.0d0
+        call finegrid(dataset(:,1),dataset(:,2),xmin-10.0D0*brd1,
+     &    xmax+10.0D0*brd2,binwidth,equix,equiv)
+        ! 
+        ! end map to equidistant grid
+        !
+      else
+        allocate(equix(ndatalines),equiv(ndatalines))      
+        equix=dataset(:,1)
+        equiv=dataset(:,2)
+      end if ! .not.lcontinous  
+      !
+      call broaden_quad(equix,equiv,brd1,brd2,periodic,period,            &
+     &         broadened_dist,lcontinuous)
+      !
+      fname2=''
+      fname2(1:len(fname))=fname(1:len(fname))
+      fname2(len_trim(fname)+1:len_trim(fname)+10)='.BROADENED'
+      print '(8x,"Writing broadened distibution to file ",A)',            &
+     & trim(adjustl(fname2))
+!      print '(8x,I0," points in broadened distribution")',                &
+!     &          size(broadened_dist)
+      open(51,file=fname2,status='replace')
+!      do idataline=1,ndatalines
+!        write(51,'(2(F20.10,5x))') dataset(idataline,1),                  &
+!     &       broadened_dist(idataline)
+!      end do
+      do i=1,size(dataset,1)
+        write(51,'(2(F20.10,5x))') equix(i),broadened_dist(i)
+      end do ! i
+      !  
+      close(51)
+      !
+      print fsubendext,'broaden_quad_dist'
+      !
+      return
+      !
+      ! Error messages
+100   nerr=nerr+1
+      close(51)
+      print ferrmssg,"Dim. of grid differs from that of field."
+      return
+      !
+      end subroutine broaden_quad_dist
+
 c---------------------------------------------------------------------
            
       subroutine bandgap(infile,informat)
@@ -3715,12 +4364,14 @@ c---------------------------------------------------------------------
       double precision, allocatable :: occups_up(:,:),occups_down(:,:)
       double precision magmom
       integer nkpoints,ikpoint,ikpoint_down
-      integer nbands,ibandup,ibanddown
+      integer nbands,nbands_printed,ibandup,ibanddown
       integer nelect
       double precision max_nele_k_up,min_nele_k_up
       double precision max_nele_k_down,min_nele_k_down
+      double precision fdum
+      integer idum,len_trim_line
       character line*256
-      logical spinpol,spinorbit
+      logical spinpol,spinorbit,read_k,qpgw
 
       print fsubstart, "bandgap"
 
@@ -3851,7 +4502,7 @@ c---------------------------------------------------------------------
         !
         ! begin read number of electrons
         !
-        if(index(line," NELEC").gt.0) then
+        if(index(line," NELEC").gt.0.and.index(line,'total').gt.0)then
           read(line(index(line,'=')+1:index(line,'.')-1),*) nelect
           print '(8x,I0,x,"electrons")',nelect
         end if
@@ -4144,9 +4795,447 @@ c---------------------------------------------------------------------
            dirfundlumo=efermi !min(lumoa,lumob)
          end if
         end do ! ikpoint 
+      case ("vasp_gw","VASP_GW","outcar_gw","OUTCAR_GW")
+        spinpol=.false.
+        qpgw=.false.
+        open(51,file=infile,status='old',err=101)
+        read_k=.true.
+28      read(51,'(A256)',end=34,err=102) line
+        if(index(line," irreducible k-points:").gt.0) then
+          if (read_k) read(line(7:14),*) nkpoints
+          print '(8x,I0,x,"kpoints")',nkpoints
+          if (allocated(kweights)) deallocate(kweights)
+          allocate(kweights(nkpoints))
+          if (allocated(kpoints)) deallocate(kpoints)
+          allocate(kpoints(nkpoints,1:3))
+          read(51,'(A256)',end=24,err=102) line
+          read(51,'(A256)',end=24,err=102) line
+          read(51,'(A256)',end=24,err=102) line
+          do ikpoint=1,nkpoints
+            read(51,'(A256)',end=34,err=102) line
+            read(line(32:44),*) kweights(ikpoint)
+            read(line(1:31),*) kpoints(ikpoint,1:3)
+          end do ! ikpoint
+          read_k=.false.
+        end if ! (index(line," irreducible k-points:").gt.0)
+        !
+        ! begin read number of electrons
+        !
+        if(index(line," NELEC").gt.0) then
+          read(line(index(line,'=')+1:index(line,'.')-1),*) nelect
+          print '(8x,I0,x,"electrons")',nelect
+        end if
+        !  
+        ! end read number of electrons
+        !
+        ! begin check if QPGW
+        !
+        if (index(line,'QPGW').gt.0) qpgw=.true.
+        !
+        ! end check if QPGW
+        !
+        ! begin read magnetization
+        !
+        if(index(line,"number of electron").gt.0.and.                     &
+     &       index(line,"magnetization").gt.0) then
+            if (spinpol)  read(line(50:65),*) magmom
+        end if
+        !
+        ! end read magnetization
+        !
+        if(index(line,"ISPIN  =      2")
+     &     .gt.0) then
+          spinpol=.true. 
+          occtol=occtol/2.0d0
+          print '(8x,"spinpol: ",L1)',spinpol
+          if(.not.allocated(bandemindown))                                &
+     &       allocate(bandemindown(nbands))
+          if(.not.allocated(bandemaxdown))                                &
+     &       allocate(bandemaxdown(nbands))
+        end if !(index(line,"ISPIN  =      2")
+        ! begin noncollinear calculation(OSC)
+        if(index(line,"LNONCOLLINEAR =      T")                           &
+     &     .gt.0) then
+          occtol=occtol/2.0d0
+          print '(8x,"spinpol: ",L1)',spinpol
+          spinorbit=.true.
+          print '(8x,"spinorbit: ",L1)',spinorbit
+!          if(.not.allocated(bandemindown))                                &
+!     &       allocate(bandemindown(nbands))
+!          if(.not.allocated(bandemaxdown))                                &
+!     &       allocate(bandemaxdown(nbands))
+        end if !(index(line,"LNONCOLLINEAR =      T")
+        ! end noncollinear calculation(SOC)
+        if (index(line,"number of bands    NBANDS=").gt.0.and.            &
+     &      index(line,"parameter").le.0) then
+          read(line(index(line,"NBANDS")+7:len(line)),*) nbands
+          print '(8x,I0,x,"bands")',nbands
+          if(.not.allocated(bandeminup)) allocate(bandeminup(nbands))
+          if(.not.allocated(bandemaxup)) allocate(bandemaxup(nbands))
+          if (allocated(levels_up)) deallocate(levels_up)
+          allocate(levels_up(nkpoints,nbands))
+          if (allocated(levels_down)) deallocate(levels_down)
+          allocate(levels_down(nkpoints,nbands))
+          if (allocated(occups_up)) deallocate(occups_up)
+          allocate(occups_up(nkpoints,nbands))
+          if (allocated(occups_down)) deallocate(occups_down)
+          allocate(occups_down(nkpoints,nbands))
+        end if
+        if(index(line,"E-fermi :").gt.0) then
+          read (line(index(line,'E-fermi')+10:),*) efermi
+          print '(8x,"E-fermi=",F12.6)',efermi
+          goto 30
+        end if !(index(line,"E-fermi :").gt.0)
+        goto 28
+        !
+30      read(51,'(A256)',end=34,err=201) line
+        if (index(line,'spin component 1').gt.0.and..not.qpgw) then
+          ! BEGIN DEBUG
+          print '(8x,"going to read spin 1 eigenvalues")'
+          ! END DEBUG
+          bandeminup=1.0d6
+          bandemaxup=-1.0d6
+          read(51,'(A256)') line
+          do ikpoint=1,nkpoints
+            !ibandup=1
+            read(51,'(A256)') line
+            read(51,'(A256)') line
+            read(51,'(A256)') line
+            line='not empty'
+            len_trim_line=len_trim(line)
+            ! read EV for all bands for this kpoint:
+            do while (len_trim_line.gt.1)
+              read(51,'(A256)') line
+              len_trim_line=len_trim(line)
+            ! read iband, KS energy, QP-energies   sigma(KS)   V_xc(KS)     V^pw_x(r,r')   Z            occupation Imag(sigma)
+            if(len_trim_line.gt.1) read(line,*) ibandup,fdum, energy,     &
+     &                   fdum, fdum, fdum, fdum, occ
+              if (energy.gt.bandemaxup(ibandup)) bandemaxup(ibandup)      &
+     &                =energy
+              if (energy.lt.bandeminup(ibandup)) bandeminup(ibandup)      &
+     &                =energy
+              levels_up(ikpoint,ibandup)=energy
+              occups_up(ikpoint,ibandup)=occ
+            end do ! while len_trim_line.gt.1
+          end do ! ikpoint
+          nbands_printed=ibandup ! Not all bands are printed
+          ! BEGIN DEBUG
+          print '(8x,"spin 1 eigenvalues read")'
+          print '(8x,"1st and last EV:",1x,F12.6,1x,F12.6)',              &
+     &     levels_up(1,1),levels_up(nkpoints,ibandup)
+          ! END DEBUG
+          if (.not.spinpol) call print_gap_info()
+          if (.not.spinpol) goto 30
+        end if  ! (index(line,'spin component 1').gt.0)
+        if (index(line,'spin component 2').gt.0.and..not.qpgw) then
+          ! BEGIN DEBUG
+          print '(8x,"going to read spin 2 eigenvalues")'
+          ! END DEBUG
+          bandemindown=1.0d6
+          bandemaxdown=-1.0d6
+          read(51,'(A256)') line
+          do ikpoint=1,nkpoints
+            !ibanddown=1
+            read(51,'(A256)') line
+            read(51,'(A256)') line
+            read(51,'(A256)') line
+            line='not empty'
+            len_trim_line=len_trim(line)
+            ! read EV for all bands for this kpoint:
+            do while (len_trim_line.gt.1)
+              read(51,'(A256)') line
+              len_trim_line=len_trim(line)
+            ! read iband, KS energy, QP-energies   sigma(KS)   V_xc(KS)     V^pw_x(r,r')   Z            occupation Imag(sigma)
+            if(len_trim_line.gt.1) read(line,*) ibanddown,fdum, energy,   &
+     &         fdum, fdum, fdum, fdum, occ
+              if (energy.gt.bandemaxdown(ibanddown))                      &
+     &            bandemaxdown(ibanddown)=energy
+              if (energy.lt.bandemindown(ibanddown))                      &
+     &            bandemindown(ibanddown)=energy
+              !print*,"ikpoint,level=",ikpoint,energy
+              levels_down(ikpoint,ibanddown)=energy
+              occups_down(ikpoint,ibanddown)=occ
+            end do ! while len_trim_line.gt.1
+          end do ! ikpoint
+          ! BEGIN DEBUG
+          print '(8x,"spin 2 eigenvalues read")'
+          ! END DEBUG
+          ! BEGIN DEBUG
+          print '(8x,"going to print gap info")'
+          ! END DEBUG
+          call print_gap_info()
+          ! BEGIN DEBUG
+          print '(8x,"gap info printed")'
+          ! END DEBUG
+          goto 30
+        end if  ! (index(line,'spin component 2').gt.0)
+        !
+        ! begin get eigenvalues of QPGW
+        !  
+        if (qpgw.and.index(line,'QP shifts').gt.0.and.index(line,'iter')  &
+     &     .gt.0) then
+          bandeminup=1.0d6
+          bandemaxup=-1.0d6
+          ! BEGIN DEBUG
+          !print*,line
+          !print '(8x,"going to read spin 1 QPGW eigenvalues")'
+          ! END DEBUG
+          read(51,'(A256)') line
+          if (index(line,'for sc-GW calculations column').gt.0) goto 30
+          ! BEGIN DEBUG
+          !print*,line
+          ! END DEBUG
+          read(51,'(A256)') line
+          ! BEGIN DEBUG
+          !print*,line
+          ! END DEBUG
+          do ikpoint=1,nkpoints
+            read(51,'(A256)') line
+            read(51,'(A256)') line
+            read(51,'(A256)') line
+            line='not empty'
+            len_trim_line=len_trim(line)
+            ! read EV for all bands for this kpoint:
+            do while (len_trim_line.gt.1)
+              read(51,'(A256)') line
+              len_trim_line=len_trim(line)
+              ! BGEIN DEBUG
+              !print*,line
+              ! END DEBUG
+              ! read iband, KS energy, QP-energies ,QP en diag, sigma, Z,  occupation 
+              if(len_trim_line.gt.1) read(line,*) ibandup,fdum, energy,   &
+     &                   fdum, fdum, fdum, occ
+              if (energy.gt.bandemaxup(ibandup)) bandemaxup(ibandup)      &
+     &                =energy
+              if (energy.lt.bandeminup(ibandup)) bandeminup(ibandup)      &
+     &                =energy
+              levels_up(ikpoint,ibandup)=energy
+              occups_up(ikpoint,ibandup)=occ
+            end do ! while len_trim_line.gt.1
+            read(51,'(A256)') line
+            ! BEGIN DEBUG
+            print '(8x,"kpoint, 1st and last QP EV:",1x,I0,1x,F12.6,1x,   &
+     &        F12.6)', ikpoint,levels_up(ikpoint,1),                      &
+     &        levels_up(ikpoint,ibandup)
+            ! END DEBUG
+          end do ! ikpoint
+          nbands_printed=ibandup ! Not all bands are printed
+          ! BEGIN DEBUG
+          print '(8x,"spin 1 QPGW eigenvalues read")'
+          print '(8x,"1st and last QP EV:",1x,F12.6,1x,F12.6)',           &
+     &     levels_up(1,1),levels_up(nkpoints,ibandup)
+          ! END DEBUG
+          if (.not.spinpol) call print_gap_info()
+          if (.not.spinpol) goto 30
+          if (spinpol) then
+            bandemindown=1.0d6
+            bandemaxdown=-1.0d6
+            ! BEGIN DEBUG
+            print '(8x,"going to read spin 2 QPGW eigenvalues")'
+            ! END DEBUG
+            do ikpoint=1,nkpoints
+              read(51,'(A256)') line
+              read(51,'(A256)') line
+              read(51,'(A256)') line
+              line='not empty'
+              len_trim_line=len_trim(line)
+              ! read EV for all bands for this kpoint:
+              do while (len_trim_line.gt.1)
+                read(51,'(A256)') line
+                len_trim_line=len_trim(line)
+              ! read iband, KS energy, QP-energies   sigma(KS)   V_xc(KS)     V^pw_x(r,r')   Z            occupation Imag(sigma)
+              if(len_trim_line.gt.1) read(line,*) ibanddown,fdum,         &
+     &          energy, fdum, fdum, fdum, occ
+                if (energy.gt.bandemaxdown(ibanddown))                    &
+     &              bandemaxdown(ibanddown)=energy
+                if (energy.lt.bandemindown(ibanddown))                    &
+     &              bandemindown(ibanddown)=energy
+                levels_down(ikpoint,ibanddown)=energy
+                occups_down(ikpoint,ibanddown)=occ
+              end do ! while len_trim_line.gt.1
+              read(51,'(A256)') line
+              ! BEGIN DEBUG
+              print '(8x,"kpoint, 1st and last QP EV:",1x,I0,1x,F12.6,    &
+     &          1x,F12.6)', ikpoint,levels_down(ikpoint,1),               &
+     &          levels_down(ikpoint,ibanddown)
+              ! BEGIN DEBUG
+            end do ! ikpoint
+            nbands_printed=ibanddown ! Not all bands are printed
+            ! BEGIN DEBUG
+            print '(8x,"spin 2 QPGW eigenvalues read")'
+            print '(8x,"1st and last QP EV:",1x,F12.6,1x,F12.6)',         &
+     &       levels_down(1,1),levels_down(nkpoints,ibanddown)
+            ! END DEBUG
+            call print_gap_info()
+          end if !(spinpol)
+        end if ! (qpgw.and.index(line,'QP shifts...).gt.0)  
+        !
+        ! end get eigenvalues of QPGW
+        !  
+        if(index(line,"-------------------------------").gt.0) goto 30
+        if(index(line,"General timing and accounting").gt.0) goto 34
+        goto 30
+34      continue
+        close(51)
+        !
+        !call print_gap_info()
+        !
+        ! begin get HOMO, LUMO, gap, direct gap
+        !
+        homoa=-1000.0d0
+        lumoa=1000.0
+        homob=-1000.0d0
+        lumob=1000.0
+        gapa=2000.0d0
+        gapb=2000.0d0
+        directgapa=2000.0d0
+        directgapb=2000.0d0
+        fundgap=2000.0d0
+        dirfundgap=2000.0d0
+        !
+        do ikpoint=1,nkpoints
+          !
+          ! begin get local VBM and CBM for up and down spins
+          !
+          homoaloc=maxval(levels_up(ikpoint,1:nbands_printed),            &
+     &            occups_up(ikpoint,1:nbands_printed) .gt.occtol)
+          lumoaloc=minval(levels_up(ikpoint,1:nbands_printed),            &
+     &            occups_up(ikpoint,1:nbands_printed) .le.occtol)
+          if (homoaloc.gt.homoa) homoa=homoaloc
+          if (lumoaloc.lt.lumoa) lumoa=lumoaloc
+          if (lumoaloc-homoaloc.lt.directgapa) then  
+             directgapa=lumoaloc-homoaloc
+          end if
+          if(directgapa.lt.dirfundgap) then
+             dirfundgap=directgapa
+             dirfundhomo=homoaloc
+             dirfundlumo=lumoaloc
+          end if
+          if (spinpol) then
+            homobloc=maxval(levels_down(ikpoint,1:nbands_printed),        &
+     &              occups_down(ikpoint,1:nbands_printed).gt.occtol)
+            lumobloc=minval(levels_down(ikpoint,1:nbands_printed),        &
+     &              occups_down(ikpoint,1:nbands_printed).le.occtol)
+            if (homobloc.gt.homob) homob=homobloc
+            if (lumobloc.lt.lumob) lumob=lumobloc
+            if (lumobloc-homobloc.lt.directgapb) then  
+                directgapb=lumobloc-homobloc
+            end if
+            if(directgapb.lt.dirfundgap) then
+               dirfundgap=directgapb
+               dirfundhomo=homobloc
+               dirfundlumo=lumobloc
+            end if
+          end if ! spinpol
+          !
+          ! end get local VBM and CBM for up and down spins
+          !
+        end do ! ikpoint
+        gapa=lumoa-homoa
+        fundgap=gapa
+        if (spinpol) then
+           gapb=lumob-homob
+           fundgap=min(gapa,gapb)
+        end if
+        !
+        ! end get HOMO, LUMO, gap, direct gap
+        !
+        ! begin set gap of metals to zero 
+        !
+        if (mod(nelect,2).gt.0.and..not.spinpol.and..not.spinorbit)       &
+     &      directgapa=gapa
+        if (mod(nelect,2).gt.0.and.spinpol.and.abs(magmom).lt.1D-1) then
+          directgapa=gapa
+          directgapb=gapb
+          fundgap=min(gapa,gapb)
+          dirfundgap=min(gapa,gapb)
+          dirfundhomo=max(homoa,homob)
+          dirfundlumo=min(lumoa,lumob)
+        end if
+        if (any(abs(occups_up(:,:)-occtol).lt.0.5d0*occtol)) then
+          gapa=0.0d0
+          homoa=efermi
+          lumoa=efermi
+          directgapa=gapa
+          fundgap=0.0d0
+          dirfundgap=min(gapa,gapb)
+          dirfundhomo=efermi !max(homoa,homob)
+          dirfundlumo=efermi !min(lumoa,lumob)
+        end if
+        if (any(abs(occups_down(:,:)-occtol).lt.0.5d0*occtol)) then
+          gapb=0.0d0
+          homob=efermi
+          lumob=efermi
+          directgapb=gapb
+          fundgap=0.0d0
+          dirfundgap=min(gapa,gapb)
+          dirfundhomo=efermi !max(homoa,homob)
+          dirfundlumo=efermi !min(lumoa,lumob)
+        end if
+        max_nele_k_up=0.0d0
+        min_nele_k_up=nelect
+        if(spinpol) then
+          max_nele_k_down=0.0d0
+          min_nele_k_down=nelect
+        end if
+        do ikpoint=1,nkpoints
+          if (sum(occups_up(ikpoint,1:nbands_printed)).gt.max_nele_k_up)  &
+     &        max_nele_k_up=sum(occups_up(ikpoint,1:nbands_printed))
+          if (sum(occups_up(ikpoint,1:nbands_printed)).lt.min_nele_k_up)  &
+     &        min_nele_k_up=sum(occups_up(ikpoint,1:nbands_printed))
+          if (spinpol) then
+            if (sum(occups_down(ikpoint,1:nbands_printed)).gt.            &
+     &          max_nele_k_down) max_nele_k_down=sum(occups_down(         &
+     &          ikpoint,1:nbands_printed))
+            if (sum(occups_down(ikpoint,1:nbands_printed)).lt.            &
+     &          min_nele_k_down) min_nele_k_down=sum(occups_down(         &
+     &          ikpoint,1:nbands_printed))
+          end if
+        end do
+        ! if the system is a metal, any finite band gap is an artefact
+        ! of sparse k-point sampling. Correct for this:
+        do ikpoint=1,nkpoints
+         if (.not.spinpol.and.(sum(occups_up(ikpoint,1:nbands_printed))   &
+     &       .lt.nelect-0.5d0*occtol.or.sum(occups_up(ikpoint,            &
+     &       1:nbands_printed)).gt.nelect+0.5d0*occtol)) then
+           gapa=0.0d0
+           homoa=efermi
+           lumoa=efermi
+           directgapa=gapa
+           fundgap=0.0d0
+           dirfundgap=min(gapa,gapb)
+           dirfundhomo=efermi !max(homoa,homob)
+           dirfundlumo=efermi !min(lumoa,lumob)
+         end if
+         if (spinpol.and.max_nele_k_up-min_nele_k_up.gt.                  &
+     &       0.5d0*occtol) then
+           gapa=0.0d0
+           homoa=efermi
+           lumoa=efermi
+           directgapa=gapa
+           fundgap=0.0d0
+           dirfundgap=0.0d0
+           dirfundhomo=efermi !max(homoa,homob)
+           dirfundlumo=efermi !min(lumoa,lumob)
+         end if
+         if (spinpol.and.min_nele_k_down.lt.max_nele_k_down-0.5d0         &
+     &       *occtol) then
+           gapb=0.0d0
+           homob=efermi
+           lumob=efermi
+           directgapb=gapb
+           fundgap=0.0d0
+           dirfundgap=0.0d0
+           dirfundhomo=efermi !max(homoa,homob)
+           dirfundlumo=efermi !min(lumoa,lumob)
+         end if
+        end do ! ikpoint 
+        !
+        ! end set gap of metals to zero 
+        !
       case default
         goto 100
-      end select
+      end select ! case(informat)
       ! 
       print '(8x,"occtol: ",F10.6)',occtol
       print '(8x,"tol_en: ",F10.6, " eV")',tol_en
@@ -4247,8 +5336,6 @@ c---------------------------------------------------------------------
         close(51)
       end if ! (allocated(levels_up))
       !  
-!      fundgap=gapa
-!      dirfundgap=directgapa
       if(spinpol) then
         !
         print '(8x,"beta homo in Hartree:",F10.6)',homob/Hartree
@@ -4422,8 +5509,433 @@ c---------------------------------------------------------------------
       print ferrmssg,"223: Error during reading"
       close(51)
       return
+      !
+c---------------------------------------------------------------------
+      !
+      contains 
+      !
+!-----------------------------------------------------------------------
 
- 
+      subroutine print_gap_info()
+        !
+        ! begin get HOMO, LUMO, gap, direct gap
+        !
+        homoa=-1000.0d0
+        lumoa=1000.0
+        homob=-1000.0d0
+        lumob=1000.0
+        gapa=2000.0d0
+        gapb=2000.0d0
+        directgapa=2000.0d0
+        directgapb=2000.0d0
+        fundgap=2000.0d0
+        dirfundgap=2000.0d0
+        !
+        ! BEGIN DEBUG
+        !
+        !print '(8x,"gaps initialized")'
+        !
+        ! END DEBUG
+        !
+        do ikpoint=1,nkpoints
+          !
+          ! begin get local VBM and CBM for up and down spins
+          !
+          homoaloc=maxval(levels_up(ikpoint,1:nbands_printed),            &
+     &            occups_up(ikpoint,1:nbands_printed) .gt.occtol)
+          lumoaloc=minval(levels_up(ikpoint,1:nbands_printed),            &
+     &            occups_up(ikpoint,1:nbands_printed) .le.occtol)
+          if (homoaloc.gt.homoa) homoa=homoaloc
+          if (lumoaloc.lt.lumoa) lumoa=lumoaloc
+          if (lumoaloc-homoaloc.lt.directgapa) then  
+             directgapa=lumoaloc-homoaloc
+          end if
+          if(directgapa.lt.dirfundgap) then
+             dirfundgap=directgapa
+             dirfundhomo=homoaloc
+             dirfundlumo=lumoaloc
+          end if
+          if (spinpol) then
+            homobloc=maxval(levels_down(ikpoint,1:nbands_printed),        &
+     &            occups_down(ikpoint,1:nbands_printed).gt.occtol)
+            lumobloc=minval(levels_down(ikpoint,1:nbands_printed),        &
+     &            occups_down(ikpoint,1:nbands_printed).le.occtol)
+            if (homobloc.gt.homob) homob=homobloc
+            if (lumobloc.lt.lumob) lumob=lumobloc
+            if (lumobloc-homobloc.lt.directgapb) then  
+                directgapb=lumobloc-homobloc
+            end if
+            if(directgapb.lt.dirfundgap) then
+               dirfundgap=directgapb
+               dirfundhomo=homobloc
+               dirfundlumo=lumobloc
+            end if
+          end if ! spinpol
+          !
+          ! end get local VBM and CBM for up and down spins
+          !
+        end do ! ikpoint
+        !
+        ! BEGIN DEBUG
+        !
+        !print '(8x,"direct gaps obtained")'
+        !
+        ! END DEBUG
+        !
+        gapa=lumoa-homoa
+        fundgap=gapa
+        if (spinpol) then
+           gapb=lumob-homob
+           fundgap=min(gapa,gapb)
+        end if
+        !
+        ! BEGIN DEBUG
+        !
+        !print '(8x,"fundamental gaps obtained")'
+        !
+        ! END DEBUG
+        !
+        !
+        ! end get HOMO, LUMO, gap, direct gap
+        !
+        ! begin set gap of metals to zero 
+        !
+        if (mod(nelect,2).gt.0.and..not.spinpol.and..not.spinorbit)       &
+     &      directgapa=gapa
+        if (mod(nelect,2).gt.0.and.spinpol.and.abs(magmom).lt.1D-1) then
+          directgapa=gapa
+          directgapb=gapb
+          fundgap=min(gapa,gapb)
+          dirfundgap=min(gapa,gapb)
+          dirfundhomo=max(homoa,homob)
+          dirfundlumo=min(lumoa,lumob)
+        end if
+        if (any(abs(occups_up(:,:)-occtol).lt.0.5d0*occtol)) then
+          gapa=0.0d0
+          homoa=efermi
+          lumoa=efermi
+          directgapa=gapa
+          fundgap=0.0d0
+          dirfundgap=min(gapa,gapb)
+          dirfundhomo=efermi !max(homoa,homob)
+          dirfundlumo=efermi !min(lumoa,lumob)
+        end if
+        if (any(abs(occups_down(:,:)-occtol).lt.0.5d0*occtol)) then
+          gapb=0.0d0
+          homob=efermi
+          lumob=efermi
+          directgapb=gapb
+          fundgap=0.0d0
+          dirfundgap=min(gapa,gapb)
+          dirfundhomo=efermi !max(homoa,homob)
+          dirfundlumo=efermi !min(lumoa,lumob)
+        end if
+        max_nele_k_up=0.0d0
+        min_nele_k_up=nelect
+        if(spinpol) then
+          max_nele_k_down=0.0d0
+          min_nele_k_down=nelect
+        end if
+        do ikpoint=1,nkpoints
+          if (sum(occups_up(ikpoint,1:nbands_printed)).gt.max_nele_k_up)  &
+     &        max_nele_k_up=sum(occups_up(ikpoint,1:nbands_printed))
+          if (sum(occups_up(ikpoint,1:nbands_printed)).lt.min_nele_k_up)  &
+     &        min_nele_k_up=sum(occups_up(ikpoint,1:nbands_printed))
+          if (spinpol) then
+            if (sum(occups_down(ikpoint,1:nbands_printed)).gt.            &
+     &          max_nele_k_down) max_nele_k_down=sum(occups_down(         &
+     &          ikpoint,1:nbands_printed))
+            if (sum(occups_down(ikpoint,1:nbands_printed)).lt.            &
+     &          min_nele_k_down) min_nele_k_down=sum(occups_down(         &
+     &          ikpoint,1:nbands_printed))
+          end if
+        end do
+        ! if the system is a metal, any finite band gap is an artefact
+        ! of sparse k-point sampling. Correct for this:
+        do ikpoint=1,nkpoints
+         if (.not.spinpol.and.(sum(occups_up(ikpoint,1:nbands_printed))   &
+     &       .lt.nelect-0.5d0*occtol.or.sum(occups_up(ikpoint,            &
+     &       1:nbands_printed)).gt.nelect+0.5d0*occtol)) then
+           gapa=0.0d0
+           homoa=efermi
+           lumoa=efermi
+           directgapa=gapa
+           fundgap=0.0d0
+           dirfundgap=min(gapa,gapb)
+           dirfundhomo=efermi !max(homoa,homob)
+           dirfundlumo=efermi !min(lumoa,lumob)
+         end if
+         if (spinpol.and.max_nele_k_up-min_nele_k_up.gt.                  &
+     &       0.5d0*occtol) then
+           gapa=0.0d0
+           homoa=efermi
+           lumoa=efermi
+           directgapa=gapa
+           fundgap=0.0d0
+           dirfundgap=0.0d0
+           dirfundhomo=efermi !max(homoa,homob)
+           dirfundlumo=efermi !min(lumoa,lumob)
+         end if
+         if (spinpol.and.min_nele_k_down.lt.max_nele_k_down-0.5d0         &
+     &       *occtol) then
+           gapb=0.0d0
+           homob=efermi
+           lumob=efermi
+           directgapb=gapb
+           fundgap=0.0d0
+           dirfundgap=0.0d0
+           dirfundhomo=efermi !max(homoa,homob)
+           dirfundlumo=efermi !min(lumoa,lumob)
+         end if
+        end do ! ikpoint 
+        !
+        ! end set gap of metals to zero 
+        !
+        !
+        ! BEGIN DEBUG
+        !
+        !print '(8x,"gaps corrected for metals")'
+        !
+        ! END DEBUG
+        !
+      print '(8x,"occtol: ",F10.6)',occtol
+      print '(8x,"tol_en: ",F10.6, " eV")',tol_en
+      print '(8x,"")'
+      print '(8x,"alpha homo in Hartree:",F10.6)',homoa/Hartree
+      print '(8x,"alpha homo in eV:",F10.6)',homoa
+      print '(8x,"")'
+      !
+      ! begin find kpoint(s) with VBM 
+      !
+      if (allocated(levels_up)) then
+        do ibandup=1,nbands
+         do ikpoint=1,nkpoints
+          if (abs(levels_up(ikpoint,ibandup)-homoa).lt.tol_en             &
+     &        .and.occups_up(ikpoint,ibandup).gt.0.5*occtol) then
+            print '(8x,"alpha homo with eigenvalue ",F12.6,               &
+     &            " at kpoint # ",I5," in band # ",I5,                    &
+     &            " with fractional coordinates ", 3(F12.7))',            &
+     &           levels_up(ikpoint,ibandup),ikpoint,ibandup,              &
+     &           kpoints(ikpoint,1:3)
+          end if           
+         end do ! ikpoint
+        end do ! ibandup
+      end if ! allocated(levelsup)
+      !
+      ! end find kpoint(s) with VBM 
+      !
+      print '(8x,"")'
+      print '(8x,"alpha lumo in Hartree:",F10.6)',lumoa/Hartree
+      print '(8x,"alpha lumo in eV:",F10.6)',lumoa
+      print '(8x,"")'
+      !
+      ! begin find kpoint(s) with CBM 
+      !
+      if (allocated(levels_up)) then
+        do ibandup=1,nbands
+         do ikpoint=1,nkpoints
+          if (abs(levels_up(ikpoint,ibandup)-lumoa).lt.tol_en             &
+     &        .and.occups_up(ikpoint,ibandup).lt.0.5*occtol) then
+            print '(8x,"alpha lumo with eigenvalue ",F12.6,               &
+     &            " at kpoint # ",I5," in band # ",I5,                    &
+     &            " with fractional coordinates ", 3(F12.7))',            &
+     &           levels_up(ikpoint,ibandup),ikpoint,ibandup,              &
+     &           kpoints(ikpoint,1:3)
+          end if           
+         end do ! ikpoint
+        end do ! ibandup
+      end if ! allocated(levelsup)
+      print '(8x,"")'
+      !
+      ! end find kpoint(s) with CBM 
+      !
+      print '(8x,"alpha bandgap in eV:",F10.6)',gapa
+      print '(8x,"alpha direct bandgap in eV:",F10.6)',directgapa
+      print '(8x,"")'
+      !
+      ! begin find kpoint(s) with direct band gap 
+      !
+      if (allocated(levels_up)) then
+        do ibandup=1,nbands
+         do ikpoint=1,nkpoints
+         if (ibandup.lt.nbands) then
+          if (abs(levels_up(ikpoint,ibandup+1)-levels_up(ikpoint,         &
+     &     ibandup)-directgapa).lt.2.0d0*tol_en.and.directgapa.gt.tol_en  &
+     &        .and.occups_up(ikpoint,ibandup+1).lt.0.5*occtol.and.        &
+     &        occups_up(ikpoint,ibandup).gt.0.5*occtol) then
+            print '(8x,"alpha direct gap of ",F12.6," eV at kpoint # ",   &
+     &      I5," between bands # ",I5," and ",I5,                         &
+     &      " with fractional coordinates ",3(F12.7))',                   &
+     &      levels_up(ikpoint,ibandup+1)-levels_up(ikpoint,ibandup),      &
+     &      ikpoint,ibandup,ibandup+1,kpoints(ikpoint,1:3)
+          end if
+         end if          
+         end do ! ikpoint
+        end do ! ibandup
+      end if ! allocated(levelsup)
+      print '(8x,"")'
+      !
+      ! end find kpoint(s) with direct band gap 
+      !
+      open(52,file='BANDEMINMAXUP.DAT',status='replace')
+      do ibandup=1,nbands
+        write(52,'(I10,5x,2(F20.8,x))') ibandup,bandeminup(ibandup),      &
+     &       bandemaxup(ibandup)
+      end do ! ibandup
+      close(52)
+      !
+      if (allocated(levels_up)) then
+        open(52,file='LEVELSUP.DAT',status='replace')
+        write(52,'("# kpoint, band, eigenvalue, weight, occupation")')
+        do ibandup=1,nbands
+          do ikpoint=1,nkpoints
+            write(52,'(2(I10,2x),5x,3(F20.8,x))') ikpoint,ibandup,        &
+     &      levels_up(ikpoint,ibandup), kweights(ikpoint),                &
+     &         occups_up(ikpoint,ibandup)
+          end do ! ikpoint
+        end do ! ibandup
+        close(52)
+      end if ! (allocated(levels_up))
+      !  
+      if(spinpol) then
+        !
+        print '(8x,"beta homo in Hartree:",F10.6)',homob/Hartree
+        print '(8x,"beta homo in eV:",F10.6)',homob
+        print '(8x,"")'
+        !
+        ! begin find kpoint(s) with VBM 
+        !
+        if (allocated(levels_down)) then
+          do ibanddown=1,nbands
+           do ikpoint=1,nkpoints
+            if (abs(levels_down(ikpoint,ibanddown)-homob).lt.tol_en       &
+     &        .and.occups_down(ikpoint,ibanddown).gt.0.5*occtol) then
+              print '(8x,"beta homo with eigenvalue ",F12.6,              &
+     &        " at kpoint # ",I5," in band # ",I5,                        &
+     &        " with fractional coordinates ",3(F12.7))',                 &
+     &        levels_down(ikpoint,ibanddown),ikpoint,ibanddown,           &
+     &        kpoints(ikpoint,1:3)
+            end if           
+           end do ! ibanddown
+          end do ! ikpoint
+        end if ! (allocated(levels_down))
+        print '(8x,"")'
+        !
+        ! end find kpoint(s) with VBM 
+        !
+        print '(8x,"beta lumo in Hartree:",F10.6)',lumob/Hartree
+        print '(8x,"beta lumo in eV:",F10.6)',lumob
+        print '(8x,"")'
+        !
+        ! begin find kpoint(s) with CBM 
+        !
+        if (allocated(levels_down)) then
+          do ibanddown=1,nbands
+           do ikpoint=1,nkpoints
+            if (abs(levels_down(ikpoint,ibanddown)-lumob).lt.tol_en       &
+     &        .and.occups_down(ikpoint,ibanddown).lt.0.5*occtol) then
+              print '(8x,"beta lumo with eigenvalue ",F12.6,              &
+     &              " at kpoint # ",I5," in band # ",I5,                  &
+     &         " with fractional coordinates ",3(F12.7))',                &
+     &       levels_down(ikpoint,ibanddown),ikpoint,ibanddown,            &
+     &       kpoints(ikpoint,1:3)
+            end if           
+           end do ! ibanddown
+          end do ! ikpoint
+        end if ! (allocated(levels_down))
+        !
+        ! end find kpoint(s) with CBM 
+        !
+        print '(8x,"")'
+        print '(8x,"beta bandgap in eV:",F10.6)',gapb
+        print '(8x,"beta direct bandgap in eV:",F10.6)',directgapb
+        print '(8x,"")'
+        !
+        ! begin find kpoint(s) with direct band gap 
+        !
+        if (allocated(levels_down)) then
+          do ibanddown=1,nbands
+           do ikpoint=1,nkpoints
+           if (ibanddown.lt.nbands) then
+            if(abs(levels_down(ikpoint,ibanddown+1)-levels_down(ikpoint,  &
+     &       ibanddown)-directgapb).lt.2.0d0*tol_en.and.directgapb.gt.    &
+     &       tol_en.and.occups_down(ikpoint,ibanddown+1).lt.0.5*occtol    &
+     &       .and. occups_down(ikpoint,ibanddown).gt.0.5*occtol) then
+              print '(8x,"beta direct gap of ",F12.6," eV at kpoint # ",  &
+     &        I5," between bandss # ",I5," and ",I5,                      &
+     &        " with fractional coordinates ",3(F12.7))',                 &
+     &        levels_down(ikpoint,ibanddown+1)-levels_down(ikpoint,       &
+     &        ibanddown),ikpoint,ibanddown,ibanddown+1,                   &
+     &        kpoints(ikpoint,1:3)
+            end if
+           end if          
+           end do ! ibanddown
+          end do ! ikpoint
+        end if ! (allocated(levels_down))
+        print '(8x,"")'
+        !
+        ! end find kpoint(s) with direct band gap 
+        !
+        open(52,file='BANDEMINMAXDOWN.DAT',status='replace')
+        do ibanddown=1,nbands
+          write(52,'(I10,5x,2(F20.8,x))') ibanddown,                      &
+     &      bandemindown(ibanddown),bandemaxdown(ibanddown)
+        end do ! ibanddown
+        close(52)
+        !
+        if (allocated(levels_down)) then
+          open(52,file='LEVELSDOWN.DAT',status='replace')
+          do ibanddown=1,nbands
+            do ikpoint=1,nkpoints
+              write(52,'(2(I10,2x),5x,3(F20.8,x))') ikpoint,ibanddown,    &
+     &        levels_down(ikpoint,ibanddown), kweights(ikpoint),          &
+     &           occups_down(ikpoint,ibanddown)
+            end do ! ikpoint
+          end do ! ibanddown
+          close(52)
+        end if ! (allocated(levels_down))
+        !  
+      end if ! (spinpol)
+      !
+      print '(8x,"fundamental bandgap in eV:",F10.6)',fundgap
+      print '(8x,"fundamental direct bandgap in eV:",F10.6)',dirfundgap
+      print '(8x,"direct fundamental HOMO in eV:",F10.6)',dirfundhomo
+      print '(8x,"direct fundamental LUMO in eV:",F10.6)',dirfundlumo
+      !
+      ! begin write VASP EIGENVAL file
+      !
+      if (allocated(kpoints)) then
+        open(52,file='COFIMA.EIGENVAL',status='replace')
+        if (.not.spinpol) write(52,*) "header header header 1"
+        if (spinpol) write(52,*) "header header header 2"
+        write(52,*) "header"
+        write(52,*) "header"
+        write(52,*) "header"
+        write(52,*) "unknown system"
+        write(52,*) nelect, nkpoints,nbands 
+        do ikpoint=1,nkpoints
+          write(52,*) " "
+          write(52,'(3(F16.12,1x))') kpoints(ikpoint,1:3)
+          do ibandup=1,nbands
+            if (spinpol) then
+              write(52,'(1(I10,2x),5x,2(F20.8,x))') ibandup,              &
+     &      levels_up(ikpoint,ibandup), levels_down(ikpoint,ibandup)    
+            else
+              write(52,'(1(I10,2x),5x,1(F20.8,x))') ibandup,              &
+     &      levels_up(ikpoint,ibandup)    
+            end if
+          end do ! ibandup
+        end do ! ikpoint
+        close(52)
+        !
+        ! end write VASP EIGENVAL file
+        !
+      end if ! allocated kpoints
+      !
+      end subroutine print_gap_info
+      !
+c---------------------------------------------------------------------
+      !
       end subroutine bandgap
 
 c---------------------------------------------------------------------
@@ -5974,7 +7486,7 @@ c---------------------------------------------------------------------
       cross_product(2)=vec1(3)*vec2(1)-vec1(1)*vec2(3)
       cross_product(3)=vec1(1)*vec2(2)-vec1(2)*vec2(1)
 
-      end function
+      end function cross_product
 
 c---------------------------------------------------------------------
 
@@ -5988,6 +7500,33 @@ c---------------------------------------------------------------------
       end subroutine vecs2vol
 
 c---------------------------------------------------------------------
+
+      subroutine recipr_latt_vecs(vecs,vecs2)
+      ! calculates reciprocal lattice vectors (vecs2) from direct
+      ! lattice vectors (vecs)
+      use defs, only: pi
+      implicit none
+      double precision vol
+      double precision vecs(1:3,1:3),vecs2(1:3,1:3)
+      call vecs2vol(vecs,vol)
+      ! calculate reciprocal lattice vectors as cross products
+      vecs2(1,1)=vecs(2,2)*vecs(3,3)-vecs(2,3)*vecs(3,2)
+      vecs2(1,2)=vecs(2,3)*vecs(3,1)-vecs(2,1)*vecs(3,3)
+      vecs2(1,3)=vecs(2,1)*vecs(3,2)-vecs(2,2)*vecs(3,1)
+
+      vecs2(2,1)=vecs(3,2)*vecs(1,3)-vecs(3,3)*vecs(1,2)
+      vecs2(2,2)=vecs(3,3)*vecs(1,1)-vecs(3,1)*vecs(1,3)
+      vecs2(2,3)=vecs(3,1)*vecs(1,2)-vecs(3,2)*vecs(1,1)
+
+      vecs2(3,1)=vecs(1,2)*vecs(2,3)-vecs(1,3)*vecs(2,2)
+      vecs2(3,2)=vecs(1,3)*vecs(2,1)-vecs(1,1)*vecs(2,3)
+      vecs2(3,3)=vecs(1,1)*vecs(2,2)-vecs(1,2)*vecs(2,1)
+
+      vecs2=vecs2*2.0d0*pi/vol
+
+      end subroutine recipr_latt_vecs
+
+c---------------------------------------------------------------------      
 
       integer function ithenearest(value,array)
       ! returns the index of the "array" element closest to "value" 
