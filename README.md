@@ -1,4 +1,4 @@
-# cofimaker
+# cofimaker <img src="cofimaker.svg" width="150" height="150"/>
 command-line tool for manipulating atomic coordinate files and more
 
 license: AGPLv3
