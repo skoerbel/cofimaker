@@ -30,6 +30,7 @@
       double precision vecs(1:3,1:3),distvec(1:3),dist,gvecs(1:3,1:3)
       double precision coords1(3),coords2(3)
       integer i,j,k,l,ndangb !  i1,i2,i3,n_NN
+      integer k1,k2,k3
       !character FMT1*1024,FMT2*1024,FMT3*1024
       character filename*256
 
@@ -461,8 +462,15 @@
          call frac2abs(atomsH(i)%where,vecs,coords1)
          do j=nkeep+1,natoms
            call frac2abs(atomsH(j)%where,vecs,coords2)
-           distvec=coords2-coords1
-           if (absvec(distvec).le.nndist) ndangb=ndangb+1
+           do k1=-1,1,1
+           do k2=-1,1,1
+           do k3=-1,1,1
+             distvec=coords2-coords1+dble(k1)*vecs(1,:)                   &
+     &            +dble(k2)*vecs(2,:)+dble(k3)*vecs(3,:)
+             if (absvec(distvec).le.nndist) ndangb=ndangb+1
+           end do ! k3
+           end do ! k2
+           end do ! k1
          end do
        end do 
        if(talk) 
@@ -475,21 +483,28 @@
        do i=1,nkeep
          call frac2abs(atomsH(i)%where,vecs,coords1)
          do j=nkeep+1,natoms
-           call frac2abs(atomsH(j)%where,vecs,coords2)
-           distvec=coords2-coords1
-           if (absvec(distvec).le.nndist) then
-             ! place a H at a fraction of the bond distance
-             if(hdist.le.0.0D0) coords2=coords1+abs(hdist)*distvec
-             ! place a H at a fixed distance (default: 1.25 Angs) along the former bond 
-             if(hdist.gt.0.0D0) coords2=coords1+hdist*distvec
+           do k1=-1,1,1
+           do k2=-1,1,1
+           do k3=-1,1,1
+             call frac2abs(atomsH(j)%where,vecs,coords2)
+             distvec=coords2-coords1+dble(k1)*vecs(1,:)                   &
+     &            +dble(k2)*vecs(2,:)+dble(k3)*vecs(3,:)
+             if (absvec(distvec).le.nndist) then
+               ! place a H at a fraction of the bond distance
+               if(hdist.le.0.0D0) coords2=coords1+abs(hdist)*distvec
+               ! place a H at a fixed distance (default: 1.25 Angs) along the former bond 
+               if(hdist.gt.0.0D0) coords2=coords1+hdist*distvec
      &          /absvec(distvec)
-             call abs2frac(coords2,vecs,keepatomsH(k)%where)
-!             print*,"coords1,coords2,keepatomsH(k)%where:",
+               call abs2frac(coords2,vecs,keepatomsH(k)%where)
+!               print*,"coords1,coords2,keepatomsH(k)%where:",
 !      &         coords1,coords2,keepatomsH(k)%where
-             k=k+1
-           end if
-         end do
-       end do 
+               k=k+1
+             end if
+           end do ! k3
+           end do ! k2
+           end do ! k1
+         end do !j
+       end do ! i
        
        ! write
        call getspecies(keepatomsH,keepspeciesH)

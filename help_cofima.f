@@ -30,9 +30,9 @@
      &   '                     adds number 1 to number 2.'
         print '(a)',
      &   '  --addatoms file format species nadd outfile coords(1,1:3) ..  &
-     &. coords (nadd,1:3)  ',
+     &. coords (nadd,1:3) (optional: abs/frac) ',
      &   '                     adds nadd atoms of species species to fil  &
-     &e file with format format and writes to outfile.'
+     &e file with format format and writes to outfile. Default: frac'
         print '(a)',
      &   '  --angs2bohr numberinangs',
      &   '                     converts numberinangs to from Angstrom to
@@ -483,6 +483,11 @@
      &   '                     merge structure file1 with file 2 and wri
      &te result to file3.'
         print '(a)',
+     &   '  --molecule file format iatom (-cutoff -maxiter) ',
+     &   '                     detect all atoms that are in  the same mo  &
+     &lecule as atom iatom. Connectivity is detected based on distance (  &
+     &cutoff, optional) using an iterative scheme (maxiter, optional).'
+        print '(a)',
      &   '  --mult n1 n2 n3 file1 file2 format1 format2 ',
      &   '                     create a n1xn2xn3 supercell.'
         print '(a)',
@@ -726,11 +731,31 @@
      &   '  --vasp_bs_pr ',
      &   '                     get projected band structure from PROCAR'
         print '(a)',
+     &   '  --vasp_BSE_trans_dens (lambda)',
+     &   '                     reads binary vasp output file WAVEDER and  &
+     & formatted file BSEFATBANDS and calculates transition densities', 
+     &   '                     from Eq. (3) in Körbel, "Optical signatur  &
+     &es of defects in BiFeO3, PRM 7 (10), 104402 (2023),',             
+     &   '                     url:  https://link.aps.org/doi/10.1103/Ph  &
+     &ysRevMaterials.7.104402 , Default: lambda=1'
+             ! 
+        print '(a)',
+     &   '  --vasp_BSE_dens (lambda)',
+     &   '                     similar to BSE_trans_dens, but w/o the di  &
+     &pole matrix elements' ,
+     &                         'Default: lambda=1'
+             ! 
+        print '(a)',
      &   '  --vasp_CHG_cut_sphere -file file -origin origin -radius radi  &
      &us',   
      &   '                     read charge density file "file" output by  &
      & VASP, write density inside and outside to files. "origin" must be  &
      & three fractional numbers, "radius" the radius in Angs'
+        print '(a)',
+     &   '  --vasp_CHG_cut_plane -file file -origin origin -nvec nvec', 
+     &   '                     read charge density file "file" output by  &
+     & VASP, write density below and above to files. "origin" must be th  &
+     &ree fractional numbers, "nvec" the normal vector of the plane'
         print '(a)',
      &   '  --vasp_CHG_overlap file1 file2',
      &   '                     read two charge densities from file1 and   &
@@ -742,11 +767,16 @@
      &file2 (CHGCAR format) and calculate their linear combination fac1   &
      &* CHG1 + fac2 * CHG2, which is written to CHG_LIN_COMB.vasp.'
         print '(a)',
+     &   '  --vasp_dos (-dos_tol)',
+     &   '                     get DOS from DOSCAR and OUTCAR with optio  &
+     &nal parameters for layer properties. dos_tol',
+     &   '                     for band edge detection, default 1E-4' 
+        print '(a)',
      &   '  --vasp_dos_pr (-layers nlayers -direction idir -origin origi  &
      &n -dos_tol)',
-     &   '                     get projected DOS from DOSCAR and OUTCAR   &
-     &with optional parameters for layer properties. dos_tol for band ',
-     &   '                     edge detection, default 1E-4' 
+     &   '                     get projected DOS from DOSCAR, PROCAR, an  &
+     &d OUTCAR with optional parameters for layer properties. dos_tol',
+     &   '                     for band edge detection, default 1E-4' 
         print '(a)',
      &   '  --vasp_get_BSE_EV_xml',
      &   '                     read BSE eigenvalues and oscillator stren  &
@@ -810,6 +840,28 @@
      &   '                     Example: -nomega 1001 -omegamax 0.0 -omeg  &
      &amin 10.0 -broad 0.025 -vbands 4  1 2 3 4 -cbands 4  5 6 7 8 -spin  &
      &s 1  2',                                                            &
+     &   ' ',                                                             &
+     &   '                     WARNING: only use without symmetries (ISY  &
+     &M=0 or spacegroup #1 / P1 / C_1).',                                 &
+     &   '                     smearing=fermi or gaussian'   
+        print '(a)',
+     &   '  --vasp_eps2_IPA_local_av (-nomega nomega -omegamin omegamin   &
+     &-omegamax omegamax -broad broadening -vbands nvbands vbands -cband  &
+     &s ncbands cbands -spins nspins spins -vbandrange firstband lastban  &
+     &d -cbandrange firstband lastband -kpoints ... -smearing ... -dir d  &
+     &ir -nperp nperp)',
+     &   '                     reads WAVEDER, EIGENVAL, OUTCAR, and PARC  &
+     &HARG.NNNN.KKKK.Ridir files from DensityTool                         &
+     &                         and calculates spatially projected epsilo  &
+     &n2. Optionally specify number of frequencies, ',                    &
+     &   '                     min and max frequency, number of valence   &
+     &bands, conduction bands, and spins and a vector of the requested b  &
+     &ands and spins, range of valence or conduction bands. ' ,           &
+     &   '                     dir: direction ov er which is not average  &
+     &d, nperp: number of points in that direction',                      & 
+     &   '                     Example: -nomega 1001 -omegamax 0.0 -omeg  &
+     &amin 10.0 -broad 0.025 -vbands 4  1 2 3 4 -cbands 4  5 6 7 8 -spin  &
+     &s 1  2 -dir 3 -nperp 500',                                          &
      &   ' ',                                                             &
      &   '                     WARNING: only use without symmetries (ISY  &
      &M=0 or spacegroup #1 / P1 / C_1).',                                 &

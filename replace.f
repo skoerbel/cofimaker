@@ -484,6 +484,196 @@ c---------------------------------------------------------------------
 
 c---------------------------------------------------------------------
 
+      subroutine get_molecule(infile,informat,theatom,nndist,molatoms,    &
+     &vecs,maxiter)
+
+      use defs
+      use readcoords
+      use misc
+      use writecoords
+      implicit none
+      character(len=*) infile,informat
+      integer theatom, maxiter
+      double precision nndist
+      ! local
+      type(atom),allocatable :: atoms(:),molatoms(:),molatoms_temp(:)
+      type(element),allocatable :: species(:)
+      integer natoms,nspecies,iatom,ispecies,coordmin,coordmax
+      integer nmolatoms,iter,inewatom,iatom2,nnew_neighbors
+      integer, allocatable :: imolatoms(:),old_neighbors(:)
+      integer, allocatable :: new_neighbors(:),new_neighbors_temp(:)
+      integer, allocatable :: imolatoms_temp(:)
+      double precision coordmean
+      double precision vecs(1:3,1:3)
+      !double precision tol
+      logical isopen12,l_continue,l_found_new,is_new
+      !character FMT1*1024,FMT2*1024
+
+      talk=.true.
+      ! write hello
+      inquire(unit=12,opened=isopen12)
+      if(talk) then
+        if(isopen12) then
+            write(12,fsubstart)'get_molecule'
+        else
+            print fsubstart, 'get_molecule'
+        end if
+      end if
+
+      ! read the coordinate file
+      call read_coords(infile,informat,atoms,natoms,species,
+     &                       nspecies,vecs)
+      natoms=size(atoms)
+      call getspecies(atoms,species)
+      nspecies=size(species)
+      
+      if(talk) then
+        if(isopen12) then
+            write(12,'(8x,"Searching molecule starting from atom # ",     &
+     &I0)') theatom
+            write(12,'(8x,"Using as cutoff ",F9.6," Angs")')nndist
+            write(12,'(8x,"Using up to ",I12," iterations")') maxiter
+        else
+            print '(8x,"Searching molecule starting from atom # ",I0)',   &
+     &     theatom
+            print '(8x,"Using as cutoff ",F9.6," Angs")',nndist
+            print '(8x,"Using up to ",I12," iterations")',maxiter
+        end if
+      end if
+      
+      ! First(zeroth) iteration. Find neighbors of teh starting atom and add them to the
+      ! "molecule".
+      iter=0
+      call coord(atoms,vecs,nndist,coordmin,coordmax,coordmean)
+      allocate(molatoms(1))
+      allocate(imolatoms(1))
+      imolatoms(1)=theatom
+      molatoms(1)=atoms(theatom)
+      l_continue=.false.
+      if (molatoms(1)%coord.gt.0) then 
+        l_continue=.true.
+        allocate (old_neighbors(molatoms(1)%coord))
+        old_neighbors(:)=molatoms(1)%ineighbors(:)
+        if (allocated(molatoms_temp)) deallocate(molatoms_temp)
+        if (allocated(imolatoms_temp)) deallocate(imolatoms_temp)
+        nmolatoms=size(molatoms)+size(old_neighbors)
+        allocate(molatoms_temp(nmolatoms),imolatoms_temp(nmolatoms))
+        imolatoms_temp(1:size(molatoms))=imolatoms
+        imolatoms_temp(size(molatoms)+1:)=old_neighbors(:)
+        deallocate(imolatoms)
+        allocate(imolatoms(nmolatoms))
+        imolatoms=imolatoms_temp
+        molatoms_temp(1:size(molatoms))=molatoms
+        molatoms_temp(size(molatoms)+1:)=atoms(old_neighbors(:))
+        deallocate(molatoms)
+        allocate(molatoms(nmolatoms))
+        molatoms=molatoms_temp
+      end if
+      !
+      ! iteratively add more neighbor atoms until maxiter is reached or
+      ! no more new neighbors can be found 
+      !
+      do while (l_continue.and.iter.lt.maxiter)
+        iter=iter+1
+        !print*, "" !DEBUG
+        !print*, "#######################" !DEBUG
+        !print*, "iter:",iter ! DEBUG
+        !print*, "#######################" !DEBUG
+        l_found_new=.false.
+        nnew_neighbors=0
+        if(allocated(new_neighbors)) deallocate(new_neighbors)
+        if (allocated(new_neighbors_temp))deallocate(new_neighbors_temp)
+        !print*,"old neighbors:",old_neighbors ! DEBUG
+        do iatom=1,size(old_neighbors)
+          !print*, "" !DEBUG
+          !print*, "iatom:", iatom ! DEBUG
+          !print*,"atom: ", old_neighbors(iatom) ! DEBUG
+          !print*,"neighbors: ", atoms(old_neighbors(iatom))%ineighbors ! DEBUG
+          do iatom2=1,atoms(old_neighbors(iatom))%coord
+            inewatom=atoms(old_neighbors(iatom))%ineighbors(iatom2)
+            if (.not.(any(imolatoms==inewatom))) then
+              ! new neighbor found. Add it to molecule and to list of
+              ! new neighbors
+              l_found_new=.true.
+              nnew_neighbors=0
+              !print*, "new atom:",inewatom ! DEBUG
+              if (allocated(new_neighbors))                               &
+     &            nnew_neighbors=size(new_neighbors)
+              !
+              ! add new atom to list of new neighbors 
+              !
+              if (allocated(new_neighbors_temp))                          &
+     &           deallocate(new_neighbors_temp)
+              if (nnew_neighbors.gt.0) then
+                allocate(new_neighbors_temp(nnew_neighbors))
+                new_neighbors_temp=new_neighbors
+              end if
+              !print*, "nnew neighbors:",nnew_neighbors ! DEBUG
+              if (allocated(new_neighbors)) deallocate(new_neighbors)
+              allocate(new_neighbors(nnew_neighbors+1))
+              if (nnew_neighbors.gt.0) then
+                new_neighbors(1:nnew_neighbors)=new_neighbors_temp
+              end if
+              new_neighbors(nnew_neighbors+1)=inewatom
+              !print*, "new neighbors:",new_neighbors ! DEBUG
+              nnew_neighbors=nnew_neighbors+1
+              !
+              ! add new atom to molecule
+              !
+              if (allocated(molatoms_temp)) deallocate(molatoms_temp)
+              if (allocated(imolatoms_temp)) deallocate(imolatoms_temp)
+              nmolatoms=size(molatoms)+1
+              allocate(molatoms_temp(nmolatoms),                          &
+     &           imolatoms_temp(nmolatoms))
+              imolatoms_temp(1:size(molatoms))=imolatoms
+              imolatoms_temp(size(molatoms)+1)=inewatom
+              deallocate(imolatoms)
+              allocate(imolatoms(nmolatoms))
+              imolatoms=imolatoms_temp
+              molatoms_temp(1:size(molatoms))=molatoms
+              molatoms_temp(size(molatoms)+1)=atoms(inewatom)
+              deallocate(molatoms)
+              allocate(molatoms(nmolatoms))
+              molatoms=molatoms_temp
+              !print*,"molecule atoms: ", imolatoms! DEBUG
+            end if ! new neighbor atom found
+            !print*, "new atom found:", l_found_new !DEBUG
+          end do ! iatom2
+        end do ! iatom 
+        l_continue=l_found_new
+        deallocate(old_neighbors)
+        !print*,"nnew_neighbors:",nnew_neighbors !DEBUG
+        if (nnew_neighbors.gt.0) then
+          allocate(old_neighbors(nnew_neighbors))
+          old_neighbors=new_neighbors
+        end if
+        !print*, "continue:",l_continue ! DEBUG
+      end do ! while loop
+      !
+      if(l_continue)                                                      &
+     &  call warning('molecule may be incomplete. Increase maxiter')
+      !
+      ! write molecule info to file
+      !
+      open(51,file="MOLECULE_LIST")
+      do iatom=1,size(molatoms)
+        write(51,*) imolatoms(iatom), molatoms(iatom)%name
+      end do
+      close(51)
+
+
+      ! write goodbye
+      if(talk) then
+        if(isopen12) then
+            write(12,fsubendext)'get_molecule'
+        else
+            print fsubendext, 'get_molecule'
+        end if
+      end if
+      end subroutine get_molecule
+
+c---------------------------------------------------------------------
+
       subroutine rmeqv(infile,informat,symmformat,outfile,tol)
 
       use defs
@@ -1272,7 +1462,7 @@ c---------------------------------------------------------------------
 c---------------------------------------------------------------------
 
       subroutine add_atoms(infile,informat,thespecies,nadd,
-     &           coords,outputfile)
+     &           coords,outputfile,abs_or_frac)
 
       use defs
       use readcoords
@@ -1281,6 +1471,7 @@ c---------------------------------------------------------------------
       implicit none
       character(len=*) infile,informat,thespecies,outputfile
       integer nadd
+      character(len=*), optional::  abs_or_frac
       ! local
       type(atom),allocatable :: atoms(:),newatoms(:)
       type(element),allocatable :: species(:),newspecies(:)
@@ -1304,6 +1495,8 @@ c---------------------------------------------------------------------
             do n=1,nadd
               print '(8x,3(F10.6))',coords(n,1:3)
             end do
+            print '(8x,"absolute or factional coordinates: ",A5)',        &
+     &          abs_or_frac
         end if
       end if
       thespecies=adjustl(thespecies)
@@ -1351,9 +1544,15 @@ c---------------------------------------------------------------------
           newatoms(natoms+n)%name(:)=" "
           newatoms(natoms+n)%core(:)="core"
           newatoms(natoms+n)%name(1:2)=thespecies(1:2)
-          newatoms(natoms+n)%where=coords(n,1:3)
-          call frac2abs(newatoms(natoms+n)%where,vecs,                    &
-     &         newatoms(natoms+n)%abswhere)
+          if (abs_or_frac.eq."abs") then
+            newatoms(natoms+n)%abswhere=coords(n,1:3)
+            call abs2frac(newatoms(natoms+n)%abswhere,vecs,               &
+     &           newatoms(natoms+n)%where)
+          else
+            newatoms(natoms+n)%where=coords(n,1:3)
+            call frac2abs(newatoms(natoms+n)%where,vecs,                  &
+     &           newatoms(natoms+n)%abswhere)
+          end if ! abs_or_frac==abs
         end do
         ! 
         ! end if positive number to be added

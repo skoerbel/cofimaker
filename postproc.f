@@ -2106,8 +2106,8 @@ c---------------------------------------------------------------------
           read(line(index(line,'energy')+6:index(line,'occ')-3),*)
      &           eigenvalues_up(ikpoint,iband)
           ! DEBUG:
-!          print '(8x,"band # ",I0, " energy ",F12.6)',                    &
-!     &         iband,eigenvalues_up(ikpoint,iband)
+          print '(8x,"band # ",I0, " energy ",F12.6)',                    &
+     &         iband,eigenvalues_up(ikpoint,iband)
           ! END DEBUG
           read(51,'(A256)',err=100, end=100) line ! empty line
           read(51,*,err=100, end=100) line ! header line (ion  s ...)
@@ -2116,7 +2116,7 @@ c---------------------------------------------------------------------
           end do
           read(51,*,err=100, end=100) cdum,dos_k(ikpoint,iband,1:10,1)
           ! DEBUG:
-          !print '(8x," dos_tot ",F12.6)', dos_k(ikpoint,iband,10,1)
+          print '(8x," dos_tot ",F12.6)', dos_k(ikpoint,iband,10,1)
           ! END DEBUG
           ! if noncollinear, we have the total DOS first, then the 3
           ! magnetization directions. The latter are ignored here.
@@ -2134,6 +2134,7 @@ c---------------------------------------------------------------------
             end do
             read(51,*,err=100, end=100) line
           end if ! noncollinear
+          read(51,'(A256)',err=100, end=100) line ! empty line
         end do ! iband
         read(51,'(A256)',err=100, end=100) line ! empty line
       end do ! ikpoint
@@ -2163,6 +2164,7 @@ c---------------------------------------------------------------------
             ! DEBUG:
             !print '(8x," dos_tot ",F12.6)', dos_k(ikpoint,iband,10,2)
             ! END DEBUG
+            read(51,'(A256)',err=100, end=100) line ! empty line
           end do ! iband
           read(51,'(A256)',err=100, end=100) line ! empty line
         end do ! ikpoint
@@ -2420,7 +2422,7 @@ c---------------------------------------------------------------------
       filename="DOS_TOT.DAT"
       open(51,file=filename, status="replace")
       do iener=1,numener
-        write(51,'(12(F12.6))') energies(iener),                          &
+        write(51,'(12(F15.6))') energies(iener),                          &
      &      dos_tot(iener,1:ispin)
       end do
       close(51)
@@ -3279,6 +3281,257 @@ c---------------------------------------------------------------------
 
 c---------------------------------------------------------------------
 
+      subroutine get_vasp_dos()
+      use defs
+      use readcoords
+      use misc, only : theta_function,string2words,finegrid,broaden,      &
+     & getspecies
+      implicit none 
+      character*1024 :: eigenval,outcar,doscar,line,xtics
+      character filename*256,filename2*256, string*256,cdum*128
+      character line2*1024
+      character (len=1024), allocatable :: words(:)
+      double precision xstart,xend
+      integer nbands,iband,nkpoints,ikpoint,nele,iline,idum
+      integer iwrite,iread,nspecies,ispecies,natoms,iatom
+      integer numener,iener,jener,kener
+      integer ispin,iorb
+      logical spinpol,has_G,has_X,has_R,has_M,noncollinear
+      double precision, allocatable :: eigenvalues_up(:,:)
+      double precision, allocatable :: eigenvalues_down(:,:)
+      double precision, allocatable :: energies(:),delta_E
+      double precision, allocatable :: dos_tot(:,:)
+      double precision, allocatable :: dos_k(:,:,:,:)
+      double precision, allocatable :: dos_k_grid(:),dos_k_val_up(:),     &
+     &     dos_k_val_down(:),dos_k_val_up_sum(:),dos_k_val_down_sum(:),   &
+     &     dos_k_val_up_broad(:),dos_k_val_down_broad(:),                 &
+     &     dos_k_val_up_sum_broad(:),dos_k_val_down_sum_broad(:),         &
+     &     jdos_direct(:),jdos_k(:)
+      double precision, allocatable :: k(:,:),svec(:),kweights(:)
+      double precision s,tol,efermi,vecs(1:3,1:3),fdum,jdos_tot(1:2)
+      double precision dos_tol
+      logical have_vbm,have_cbm
+      type(atom), allocatable :: atoms(:)
+      type(element), allocatable :: species(:)
+      !
+      print fsubstart,'get_vasp_dos'  
+      print '(8x,"Using as DOS tolerance ",F12.6)',dos_tol
+      !
+      ! begin initialize
+      !
+      eigenval="EIGENVAL"
+      outcar="OUTCAR"
+      doscar="DOSCAR"
+      s=0.0d0
+      spinpol=.false.
+      noncollinear=.false.
+      ispin=1
+      has_G=.false.
+      has_X=.false.
+      has_R=.false.
+      has_M=.false.
+      tol=1D-4
+      !
+      ! end initialize
+      !
+      !
+      ! begin read atom info
+      !
+      call read_coords(outcar,"outcar",atoms,natoms,species,              &
+     &                 nspecies,vecs)
+      ! DEBUG:
+      do iatom=1,natoms
+        print*,iatom,atoms(iatom)%name
+      end do
+      ! END DEBUG
+      call getspecies(atoms,species)
+      if (talk) print '(8x,"atom info read")'
+      !
+      ! end read atom info
+      !
+      ! begin read Fermi energy and spin polarization
+      !
+      open(51,file=outcar,status='old')
+10    read(51,'(A256)',err=100,end=20) line
+      if(index(line,'E-fermi').gt.0) then
+        iread=index(line,'E-fermi')+9
+        read(line(iread:),*) efermi
+      end if
+      if(index(line,'   ISPIN  =    ').gt.0) then
+        iread=index(line,'=')+1
+        read(line(iread:),*) ispin
+        if (ispin==2) spinpol=.true.
+      end if
+      if(index(line,' LNONCOLLINEAR ').gt.0) then
+        iread=index(line,'=')+1
+        read(line(iread:),*) noncollinear
+        ! DEBUG:
+        !if (talk) print '(8x,"noncollinear=",L1)',noncollinear
+        ! END DEBUG
+      end if
+      goto 10
+      !
+20    continue
+      close(51)
+      !
+      ! end read Fermi energy and spin polarization
+      !
+      ! begin read dos
+      !
+      open(51,file=doscar,status="old", err=101)
+      rewind(51)
+      do iline=1,5
+        read(51,*) line
+      end do
+      read(51,*) fdum,fdum,numener
+      print '(8x,I0," energies in DOS")' , numener
+      print '(8x,I0," spin channels")' , ispin
+      allocate(dos_tot(numener,1:2))
+      allocate(energies(numener))
+      ! read total dos:
+      do iener=1,numener
+        read(51,*) energies(iener),dos_tot(iener,1:ispin)
+        energies(iener)=energies(iener)-efermi
+      end do
+      close(51)
+      !
+      ! end read dos
+      !
+      ! begin print DOS
+      !
+      ! total DOS :
+      filename="DOS_TOT.DAT"
+      open(51,file=filename, status="replace")
+      do iener=1,numener
+        write(51,'(12(F15.6))') energies(iener),                          &
+     &      dos_tot(iener,1:ispin)
+      end do
+      close(51)
+      !
+      ! end print DOS
+      !
+      ! begin print gnuplot file
+      !
+      ! total DOS:
+      open(52,file='plot_dos.gpi',status='replace')
+      write(52,'(256A)') '#set term x11 "Times-Roman"' 
+      write(52,'(256A)') 'set term post enhanced color "Times-Roman" #    &
+     & eps' 
+      write(52,'(256A)') 'set out "DOS.eps"' 
+      write(52,'(256A)') "#set size 0.25, 0.3" 
+      write(52,'(256A)') "set xlabel 'E-E_F (eV)' offset 1"
+      write(52,'(256A)') "set ylabel 'DOS' offset 1"
+      write(52,'(256A)') "xmin=-15" 
+      write(52,'(256A)') "xmax=15" 
+      write(52,'(256A)') "set xrange [xmin:xmax]" 
+      write(52,'(256A)') "shift=0" 
+      write(52,'(256A)') "fac=1" 
+      write(52,'(256A)') "" 
+      filename="DOS_TOT.DAT"
+      string="     "
+      iwrite=len_trim(string)+1
+      write(string(iwrite:),*)'p "',adjustl(trim(filename)),'"'
+      !print*, string
+      iwrite=len_trim(string)+1
+      if (ispin==1) then
+        write(string(iwrite:),'(" u 1:($2*fac+",I0,"*shift) w l lt 1      &
+     &lc 0 t ",A5)') 0,' ""'           
+        else
+          write(string(iwrite:),'(" u 1:($2*fac+",I0,"*shift) w l lt 1    &
+     &lc 0 t ",A5)') 0,' "",\'
+      end if
+      !print*, string
+      write(52,*) adjustl(trim(adjustl(string)))
+      if (ispin==2) then
+        filename="DOS_TOT.DAT"
+        string="     "
+        iwrite=len_trim(string)+1
+        write(string(iwrite:),*)'"',adjustl(trim(filename)),'"'
+        !print*, string
+        iwrite=len_trim(string)+1
+        write(string(iwrite:),'(" u 1:(-$3*fac+",I0,"*shift) w l lt 1     &
+     & lc 0 t ",A5)') 0,' ""'           
+        !print*, string
+        write(52,*) adjustl(trim(adjustl(string)))
+      end if
+      write(52,'(256A)') ' ' 
+      write(52,'(256A)') 'system("epstopdf DOS.eps") # eps' 
+      close(52)
+      !
+      !
+      ! end print gnuplot file
+      !
+      ! begin print gnuplot file to use latex 
+      !
+      ! total DOS:
+      open(52,file='plot_dos_latex.gpi',status='replace')
+      write(52,'(256A)') 'set term epslatex standalone size 10cm,6cm' 
+      write(52,'(256A)') 'set out "DOS.tex"  ' 
+      write(52,'(256A)') "#set size 0.25, 0.3" 
+      write(52,'(256A)') "set xlabel '$E-E_F$ (eV)' offset 1"
+      write(52,'(256A)') "set ylabel 'DOS' offset 1"
+      write(52,'(256A)') "xmin=-15" 
+      write(52,'(256A)') "xmax=15" 
+      write(52,'(256A)') "set xrange [xmin:xmax]" 
+      write(52,'(256A)') "shift=0" 
+      write(52,'(256A)') "fac=1" 
+      write(52,'(256A)') "" 
+      filename="DOS_TOT.DAT"
+      string="     "
+      iwrite=len_trim(string)+1
+      write(string(iwrite:),*)'p "',adjustl(trim(filename)),'"'
+      !print*, string
+      iwrite=len_trim(string)+1
+      if (ispin==1) then
+        write(string(iwrite:),'(" u 1:($2*fac+",I0,"*shift) w l lt 1      &
+     &lc 0 t ",A5)') 0,' ""'           
+        else
+          write(string(iwrite:),'(" u 1:($2*fac+",I0,"*shift) w l lt 1    &
+     &lc 0 t ",A5)') 0,' "",\'
+      end if
+      !print*, string
+      write(52,*) adjustl(trim(adjustl(string)))
+      if (ispin==2) then
+        filename="DOS_TOT.DAT"
+        string="     "
+        iwrite=len_trim(string)+1
+        write(string(iwrite:),*)'"',adjustl(trim(filename)),'"'
+        !print*, string
+        iwrite=len_trim(string)+1
+        write(string(iwrite:),'(" u 1:(-$3*fac+",I0,"*shift) w l lt 1     &
+     & lc 0 t ",A5)') 0,' ""'           
+        !print*, string
+        write(52,*) adjustl(trim(adjustl(string)))
+      end if
+      write(52,'(256A)') ' ' 
+      write(52,'(256A)') 'set out ' 
+      write(52,'(256A)') 'system("pdflatex DOS.tex") # latex ' 
+      close(52)
+      !
+      ! end print gnuplot file to use latex
+      !
+      !
+      !
+      print fsubendext,'get_vasp_dos'  
+      ! 
+      return
+      !
+100   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'Problem reading OUTCAR file'
+      return
+      !
+101   continue    
+      close(51)
+      nerr=nerr+1
+      print ferrmssg,'DOSCAR not found'
+      return
+      !
+      end subroutine get_vasp_dos
+
+c---------------------------------------------------------------------
+
       subroutine vasp_get_eps_vs_omega(rotmat)
       use defs
       use linalg
@@ -3792,7 +4045,7 @@ c---------------------------------------------------------------------
       ! begin read eps1, eps2 without local field effects 
       !
       iter=0
-20    read(51,'(A1024)',end=21,err=20) line
+20    read(51,'(A1024)',end=21,err=101) line
       if (index(line,'HEAD OF MICROSCOPIC DIELECTRIC TENSOR (INDEPENDENT  &
      & PARTICLE)').gt.0) then
         iter=iter+1
@@ -4942,6 +5195,235 @@ c---------------------------------------------------------------------
       return
       !
       end subroutine vasp_CHG_cut_sphere
+
+c---------------------------------------------------------------------
+
+      subroutine vasp_CHG_cut_plane(origin,nvec,filename)
+      !  
+      ! needs as input VASP CHGCAR or PARCHG file. 
+      ! Prints the charge density above/below a plane through origin perpendicular to
+      ! nvec
+      ! 
+      use defs
+      use readcoords, only : read_poscar
+      use writecoords
+      use misc, only : vecs2vol, ithenearest,cross_product
+      !
+      implicit none 
+      integer i,j,i0
+      double precision :: origin(3),nvec(1:3)
+      character*1024 :: line,filename
+      character*24 FORMA
+      double precision :: vecs(1:3,1:3) !,vol
+      double precision pos(3),posfrac(1:3)
+      double precision, allocatable :: CD(:,:,:),abspos(:,:,:,:),         &
+     &                          fracpos(:,:,:,:),MCD(:,:,:)
+      double precision, allocatable ::CD_below(:,:,:),CD_above(:,:,:)
+      double precision, allocatable :: MCD_below(:,:,:),                 &
+     &MCD_above(:,:,:)
+      type(atom), allocatable :: atoms(:)
+      type(element), allocatable :: species(:)
+      integer natoms, nspecies,ngxf,ngyf,ngzf ! grid point numbers
+      integer ix,iy,iz,i1,i2,i3
+      !
+      print fsubstart,'vasp_CHG_cut_plane'  
+      !
+      ! read coordinates, cell vectors, ... from header of CHGCAR.
+      ! get cell volume to scale CD
+      print '(8x,"Reading file ",A)',adjustl(trim(adjustl(filename)))
+      call read_poscar(filename,atoms,natoms,species,nspecies,
+     &           vecs)
+      print '(8x,"atomic positions and lattice vectors read in.")'
+
+      print '(8x,"Cutting above/below a plane at fractional position ",   &
+     &     3(F12.6)," perp to ",3(F12.6))', origin,nvec
+      origin=matmul(transpose(vecs),origin)
+      print '(8x,"Cutting at absolute position ", 3(F12.6))', origin
+      !
+      !
+      ! begin read charge density and positions
+      !
+      open(51,file=filename,status='old', err=101)  
+      rewind(51)
+      read(51,'(A1024)', end=101,err=101) line
+      do while (line.ne.'')
+        read(51,'(A1024)', end=101,err=101) line
+      end do
+      read(51,*, err=101) ngxf,ngyf,ngzf
+      print '(8x,"NGXF, NGYF, NGZF: ",3(I0,", "))', ngxf,ngyf,ngzf
+      allocate(CD(ngxf,ngyf,ngzf),MCD(ngxf,ngyf,ngzf))
+      allocate(CD_below(ngxf,ngyf,ngzf),MCD_below(ngxf,ngyf,ngzf))
+      allocate(CD_above(ngxf,ngyf,ngzf),MCD_above(ngxf,ngyf,ngzf))
+      allocate(abspos(ngxf,ngyf,ngzf,1:3))
+      allocate(fracpos(ngxf,ngyf,ngzf,1:3))
+      print '(8x,"arrays allocated.")'
+      read(51,*,err=101) (((CD(iX,iY,iZ),iX=1,NGXF),iY=1,NGYF),iZ=1,      &
+     &     NGZF) ! Charge density
+      print '(8x,"Charge density read.")'
+      !
+      read(51,*,err=14,end=14) ngxf,ngyf,ngzf
+      print '(8x,"NGXF, NGYF, NGZF: ",3(I0,", "))', ngxf,ngyf,ngzf
+      read(51,*,end=14,err=14)(((MCD(iX,iY,iZ),iX=1,NGXF),iY=1,           &
+     &      NGYF),iZ=1,NGZF) ! Magnetization charge density
+      print '(8x,"Magnetization charge density read.")'
+      close(51)
+      goto 15
+      !
+14    continue    
+      close(51)
+      close(52)
+      nwarn=nwarn+1
+      print fwarn,'cannot read mag. density. Ok for PARCHG or ISPIN=1'
+      deallocate(MCD)
+      deallocate(MCD_below)
+      deallocate(MCD_above)
+      !
+15    continue 
+      !     
+      print '(8x,"setting up spatial grid...")'
+      do ix=1,ngxf
+       do iy=1,ngyf
+        do iz=1,ngzf
+         abspos(ix,iy,iz,1)=dble(mod(ix,ngxf))/dble(ngxf)*vecs(1,1)       &
+     &                     +dble(mod(iy,ngyf))/dble(ngyf)*vecs(2,1)       &
+     6                     +dble(mod(iz,ngzf))/dble(ngzf)*vecs(3,1)   
+         abspos(ix,iy,iz,2)=dble(mod(ix,ngxf))/dble(ngxf)*vecs(1,2)       &
+     &                     +dble(mod(iy,ngyf))/dble(ngyf)*vecs(2,2)       &
+     &                     +dble(mod(iz,ngzf))/dble(ngzf)*vecs(3,2)
+         abspos(ix,iy,iz,3)=dble(mod(ix,ngxf))/dble(ngxf)*vecs(1,3)       &
+     &                     +dble(mod(iy,ngyf))/dble(ngyf)*vecs(2,3)       &
+     &                     +dble(mod(iz,ngzf))/dble(ngzf)*vecs(3,3)
+         fracpos(ix,iy,iz,1:3)=(/dble(mod(ix,ngxf))/dble(ngxf),           &
+     &                           dble(mod(iy,ngyf))/dble(ngyf),           &
+     &                           dble(mod(iz,ngzf))/dble(ngzf)/)
+        end do ! igzf
+       end do ! igyf
+      end do ! igxf
+      print '(8x,"...spatial grid has been set up.")'
+      !
+      ! end read charge density and positions
+      !
+      print '(8x,"partitioning charge density...")'
+      !
+      CD_below=0.0d0
+      if (allocated(MCD_below)) MCD_below=0.0d0
+      CD_above=CD
+      if (allocated(MCD_above)) MCD_above=MCD
+      do iX=1,ngxf
+       do iY=1,ngyf
+        do iZ=1,ngzf
+         !do i1=-1,1
+         !do i2=-1,1
+         !do i3=-1,1
+         i1=0
+         i2=0
+         i3=0
+         if (dot_product(abspos(iX,iY,iZ,:)+dble(i1)*vecs(1,:)+dble(i2)   &
+     &     *vecs(2,:)+dble(i3)*vecs(3,:)-origin(:),nvec).le.0.0d0) then
+          CD_below(iX,iY,iZ)=CD(iX,iY,iZ)
+          if (allocated(MCD)) MCD_below(iX,iY,iZ)=MCD(iX,iY,iZ)
+          CD_above(iX,iY,iZ)=0.0d0
+          if (allocated(MCD)) MCD_above(iX,iY,iZ)=0.0d0
+         end if
+         !end do ! i1
+         !end do ! i2 
+         !end do ! i3
+        end do ! igzf
+       end do ! igyf
+      end do ! igxf
+      print '(8x,"...done.")'
+      !
+      ! begin write CD below plane
+      !
+      print '(8x,"writing charge density below plane...")'
+      call write_coords('CHG_BELOW_PLANE','poscar',atoms,natoms,          &
+     &                  species,nspecies,vecs)
+      open(52,file='CHG_BELOW_PLANE',status='old',position='append',      &
+     &     err=102) 
+      write(52,'(" ")')
+      write(52,'(3I5)') ngxf,ngyf,ngzf
+      FORMA='(10(1X,G11.5))'
+      write(52,FORMA) (((CD_below(iX,iY,iZ),iX=1,NGXF),                  &
+     &     iY=1,NGYF),iZ=1,NGZF) 
+      if (allocated(MCD_below)) then
+        write(52,'(3I5)') ngxf,ngyf,ngzf
+        FORMA='(10(1X,G11.5))'
+        write(52,FORMA) (((MCD_below(iX,iY,iZ),iX=1,NGXF),               &
+     &       iY=1,NGYF),iZ=1,NGZF) 
+      end if
+      close(52)
+      print '(8x,"...done.")'
+      !
+      print '(8x,"and above plane...")'
+      call write_coords('CHG_ABOVE_PLANE','poscar',atoms,natoms,          &
+     &                  species,nspecies,vecs)
+      open(52,file='CHG_ABOVE_PLANE',status='old',position='append',      &
+     &     err=103) 
+      write(52,'(" ")')
+      write(52,'(3I5)') ngxf,ngyf,ngzf
+      FORMA='(10(1X,G11.5))'
+      write(52,FORMA) (((CD_above(iX,iY,iZ),iX=1,NGXF),                   &
+     &     iY=1,NGYF),iZ=1,NGZF) 
+      if (allocated(MCD_above)) then
+        write(52,'(3I5)') ngxf,ngyf,ngzf
+        FORMA='(10(1X,G11.5))'
+        write(52,FORMA) (((MCD_above(iX,iY,iZ),iX=1,NGXF),                &
+     &       iY=1,NGYF),iZ=1,NGZF) 
+      end if
+      close(52)
+      print '(8x,"...done.")'
+      !
+      !
+      !
+      deallocate(CD)
+      deallocate(CD_below)
+      deallocate(CD_above)
+      if(allocated(MCD)) deallocate(MCD)
+      if(allocated(MCD_below)) deallocate(MCD_below)
+      if(allocated(MCD_above)) deallocate(MCD_above)
+      print fsubendext,'vasp_CHG_cut_plane'  
+      return
+      !
+      !
+101   continue    
+      close(51)
+      if(allocated(CD)) deallocate(CD)
+      if(allocated(CD_below)) deallocate(CD_below)
+      if(allocated(CD_above)) deallocate(CD_above)
+      if(allocated(MCD)) deallocate(MCD)
+      if(allocated(MCD_below)) deallocate(MCD_below)
+      if(allocated(MCD_above)) deallocate(MCD_above)
+      nerr=nerr+1
+      print ferrmssg,'something wrong with Charge density file...'
+      return
+      !
+102   continue    
+      close(51)
+      close(52)
+      deallocate(CD)
+      deallocate(CD_below)
+      deallocate(CD_above)
+      deallocate(MCD)
+      deallocate(MCD_below)
+      deallocate(MCD_above)
+      nerr=nerr+1
+      print ferrmssg,'cannot write CHG_BELOW_PLANE'
+      return
+      !
+103   continue    
+      close(51)
+      close(52)
+      deallocate(CD)
+      deallocate(CD_below)
+      deallocate(CD_above)
+      deallocate(MCD)
+      deallocate(MCD_below)
+      deallocate(MCD_above)
+      nerr=nerr+1
+      print ferrmssg,'cannot write CHG_ABOVE_PLANE'
+      return
+      !
+      end subroutine vasp_CHG_cut_plane
 
 c---------------------------------------------------------------------
 
@@ -7694,6 +8176,7 @@ c---------------------------------------------------------------------
      &   talk             
       use misc, only : fermi_dist,delta_function_fermi
       use misc, only : gaussian_dist,delta_function_gaussian
+      use linalg
       !
       implicit none
       !
@@ -7714,6 +8197,10 @@ c---------------------------------------------------------------------
       double precision, allocatable :: omega(:)
       integer ispin,ik,ib1,ib2,iomega,iomega2,idir,jdir
       double precision, allocatable :: epsilon2(:,:,:) ! epsilon(direction1,direction2,omega)
+      ! diagonalization
+      double precision :: epsi(1:3,1:3)
+      double precision, allocatable :: epseigs(:),epsev(:,:)
+      integer i
       character*1024 smearing
       !
       print fsubstart,'vasp_eps2_from_WAVEDER'  
@@ -7912,14 +8399,23 @@ c---------------------------------------------------------------------
      &       size(spins),nkpoints,size(vbands),size(cbands)
       ! write epsilon
       write(fileunit,'("# omega eps2(1,1) eps2(2,2), eps2(3,3), eps2(1,2  &
-     &) eps2(2,3) eps2(1,3)")')
+     &) eps2(2,3) eps2(1,3), eigenvalues, eigenvectors")')
       do iomega=1,nomega
+           ! begin diagonalize eps2
+           epsi=epsilon2(:,:,iomega) ! epsi is overwritten during diagonalization
+           if (allocated(epseigs)) deallocate(epseigs)
+           if (allocated(epsev)) deallocate(epsev)
+           !call get_mateigs_full_symm(epsi,epseigs,epsev)
+           call get_mateigs_full(epsi,epseigs,epsev)
+           call sort_mateigs(epseigs,epsev)
+           ! end diagonalize eps2
 !           write(fileunit,'(F15.6,1x,6(e13.5))')                          &
 !           write(fileunit,'(F15.6,1x,6(e16.6))')                          &
-           write(fileunit,'(F15.6,1x,6(E15.6E3))')                        &
+           write(fileunit,'(F15.6,1x,18(E15.6E3))')                       &
      &        omega(iomega),epsilon2(1,1,iomega),epsilon2(2,2,iomega),    &
      &        epsilon2(3,3,iomega),epsilon2(1,2,iomega),epsilon2(2,3,     &
-     &        iomega),epsilon2(3,1,iomega)
+     &        iomega),epsilon2(3,1,iomega),epseigs(1:3),                  &
+     &        (epsev(1:3,i),i=1,3)
       end do ! iomega
       ! close
       close(fileunit)
@@ -8192,6 +8688,1417 @@ c---------------------------------------------------------------------
       call error_stop('unknown electronic smearing')      
       !
       end subroutine vasp_eps2_from_WAVEDER_LEH
+
+c---------------------------------------------------------------------
+
+      subroutine vasp_eps2_IPA_local_av(nomega,omega_min,omega_max,       &
+     &    sigma,vbands,cbands,spins,kpoints, smearing,i_dir_perp,n_perp)
+      ! 
+      ! reads binary vasp output file WAVEDER and calculates epsilon2
+      ! from the matrix elements 
+      !  
+      use defs, only : fsubstart,fsubendext,error_stop,pi,ec,bohr,Ryd,    &
+     &   talk             
+      use misc, only : fermi_dist,delta_function_fermi
+      use misc, only : gaussian_dist,delta_function_gaussian
+      !
+      implicit none
+      !
+      logical file_found,lnoncollinear
+      integer fileunit
+      integer, parameter :: q=selected_real_kind(10)
+      integer,parameter :: qs=selected_real_kind(5)
+      !
+      integer nomega
+      integer, allocatable :: vbands(:),cbands(:),spins(:),kpoints(:)
+      double precision omega_min,omega_max,efermi,sigma,occ_v,occ_c,vol
+      double precision,allocatable :: eigenvalues(:,:,:) ! energy eigenvalues for each kpoint, band, spin
+      double precision, allocatable :: kweights(:)
+      real :: nodes_in_epsilon
+      integer :: nkpoints,nbands_tot,nspins,ncbands_eps     ! number of bands considered for epsilon
+      real omega_plasmon(1:3,1:3)
+      complex(qs), allocatable :: matrix_elements(:,:,:,:,:)
+      double precision, allocatable :: omega(:)
+      integer ispin,ik,ib1,ib2,iomega,iomega2,idir,jdir,i_dir_perp,       &
+     &   n_perp,i_perp
+      double precision, allocatable :: epsilon2(:,:,:) ! epsilon(direction1,direction2,omega)
+      double precision, allocatable :: epsilon2_loc(:,:,:,:,:) ! epsilon_loc(direction1,direction2,omega,xperp,type), xperp: direction that isnot averaged, type: e^- or h^+
+      double precision, allocatable :: PARCHGAV_E(:),PARCHGAV_H(:)
+      double precision delta_epsilon2,tol,dum1,dum2,dum3,dum4,dum5,dum6
+      character*1024 smearing,error_string
+      character*19 pfile
+      !
+      print fsubstart,'vasp_eps2_IPA_local_av'  
+      !
+      print '(8x,"Using ",I0," frequencies from ",F12.6," to ",F12.6,     &
+     &        " eV")',nomega,omega_min,omega_max
+      print '(/8x,"Using ",A10," smearing by ",F9.6," eV")', adjustl(     &
+     &   trim(adjustl(smearing))),sigma
+      print '(8x,"direction that is not averaged: x",I0)',i_dir_perp    
+      print '(8x,"number of points in direction that is not averaged: x"  &
+     &  ,I0)',n_perp    
+      !
+      allocate(omega(1:nomega))
+      do iomega=1,nomega
+        omega(iomega)=omega_min+dble(iomega-1)*(omega_max-omega_min)      &
+     &    /dble(nomega-1)
+      end do
+      !
+      fileunit=51
+      !
+      ! begin get volume
+      !
+      call vasp_read_volume(vol)
+      !
+      ! end get volume
+      !
+      ! begin read Fermi energy
+      !
+      call vasp_read_fermi_energy(efermi)
+      efermi=efermi+0.02d0 ! move Fermi energy a bit above the VBM
+      !
+      ! end read Fermi energy
+      !
+      ! begin read LNONCOLLINEAR
+      !
+      lnoncollinear=.FALSE.
+      call vasp_read_lnoncollinear(lnoncollinear)
+      if(talk) print '(8x,"noncollinear run: ",L1)', lnoncollinear
+      !
+      ! end read LNONCOLLINEAR
+      !
+      ! begin check if PARCHG files are present
+      ! 
+      do ik=1,nkpoints 
+        if (.not.any(kpoints==ik)) cycle
+       do ib1=1,nbands_tot ! valence bands
+         if (.not.(any(vbands==ib1).or.any(cbands==ib1))) cycle
+         pfile="PARCHG.0000.0000.R"
+         write(pfile(19:19),'(I1)') i_dir_perp
+         if (1.le.ib1.and.ib1.le.9)    write(pfile(11:11),'(I1)') ib1
+         if (10.le.ib1.and.ib1.le.99)    write(pfile(10:11),'(I2)') ib1
+         if (100.le.ib1.and.ib1.le.999)    write(pfile(9:11),'(I3)') ib1
+         if (1000.le.ib1.and.ib1.le.9999)  write(pfile(8:11),'(I4)') ib1
+         if (10000.le.ib1) call error_stop('Only up to 9999 bands allowe  &
+     &d') 
+         if (1.le.ik.and.ik.le.9)    write(pfile(16:16),'(I1)') ik
+         if (10.le.ik.and.ik.le.99)    write(pfile(15:16),'(I2)') ik
+         if (100.le.ik.and.ik.le.999)    write(pfile(14:16),'(I3)') ik
+         if (1000.le.ik.and.ik.le.9999)    write(pfile(13:16),'(I4)') ik
+         if (10000.le.ik) call error_stop('Only up to 9999 kpoints allow  &
+     &ed') 
+         inquire(file=pfile, exist=file_found)
+         error_string=""
+         write(error_string,'("File ",A19," not found")')pfile
+         if (.not.file_found) call error_stop(trim(adjustl(error_string)  &
+     &))
+       end do ! ib1 
+      end do ! ik 
+      !
+      ! end check if PARCHG files are present
+      ! 
+      !
+      ! begin read WAVEDER
+      !
+      inquire(file="WAVEDER", exist=file_found)
+      if (.not.file_found) call error_stop('WAVEDER not found')
+      !
+      open(unit=fileunit,file='WAVEDER',form='unformatted',               &
+     &   status='old')
+      read(fileunit) nbands_tot, ncbands_eps, nkpoints, nspins
+      print '(8x,I0," bands in total, ",I0," cond. bands for epsilon, ",  &
+     &        I0," kpoints, ",I0," spins")',nbands_tot,ncbands_eps,       &
+     &        nkpoints,nspins
+      if (any(vbands==-1)) then
+        deallocate(vbands)
+        allocate(vbands(nbands_tot))
+        do ib1=1,nbands_tot
+          vbands(ib1)=ib1
+        end do
+      end if
+      print '(8x,"Using ",I0," valence bands")',size(vbands)
+      if (any(cbands==-1)) then
+        deallocate(cbands)
+        allocate(cbands(nbands_tot))
+        do ib1=1,nbands_tot
+          cbands(ib1)=ib1
+        end do
+      end if
+      print '(8x,"Using ",I0," conduction bands")',size(cbands)
+      if (any(spins==-1)) then
+        deallocate(spins)
+        allocate(spins(nspins))
+        do ispin=1,nspins
+          spins(ispin)=ispin
+        end do
+      end if
+      if (any(kpoints==-1)) then
+        deallocate(kpoints)
+        allocate(kpoints(nkpoints))
+        do ik=1,nkpoints
+          kpoints(ik)=ik
+        end do
+      end if
+      print '(8x,"Using ",I0," spins")',size(spins)
+      allocate(matrix_elements(nbands_tot, ncbands_eps, nkpoints,         &
+     &         nspins, 3))
+      matrix_elements=(0.0d0,0.0d0)
+      read(fileunit) nodes_in_epsilon
+      read(fileunit) omega_plasmon
+      read(fileunit) matrix_elements(:,:,1:nkpoints,:,:)
+      close(fileunit)
+      !
+      ! end read WAVEDER
+      !
+      ! begin read eigenvalues and weights
+      !
+      call vasp_read_eigenvalues_and_weights(eigenvalues,kweights)
+      !
+      ! end read eigenvalues and weights
+      !
+      !
+      !
+      ! begin calculate epsilon2,epsilon2_loc
+      !
+      allocate(epsilon2(1:3,1:3,nomega),                                  &
+     &      epsilon2_loc(1:3,1:3,nomega,n_perp,2))
+      allocate(PARCHGAV_E(n_perp),PARCHGAV_H(n_perp))
+      epsilon2=0.0d0
+      epsilon2_loc=0.0d0
+      !
+      do idir=1,3
+      do jdir=1,3
+       do iomega=1,nomega
+         do ispin=1,nspins
+          if (.not.any(spins==ispin)) cycle
+          do ik=1,nkpoints 
+            if (.not.any(kpoints==ik)) cycle
+           do ib1=1,nbands_tot ! valence bands
+            if (.not.(any(vbands==ib1).or.any(cbands==ib1))) cycle
+            do ib2=ib1+1,nbands_tot ! conduction bands
+             if (.not.(any(vbands==ib2).or.any(cbands==ib2))) cycle
+         pfile="PARCHG.0000.0000.R"
+         write(pfile(19:19),'(I1)') i_dir_perp
+         if (1.le.ib1.and.ib1.le.9)    write(pfile(11:11),'(I1)') ib1
+         if (10.le.ib1.and.ib1.le.99)    write(pfile(10:11),'(I2)') ib1
+         if (100.le.ib1.and.ib1.le.999)    write(pfile(9:11),'(I3)') ib1
+         if (1000.le.ib1.and.ib1.le.9999)  write(pfile(8:11),'(I4)') ib1
+         if (10000.le.ib1) call error_stop('Only up to 9999 bands allowe  &
+     &d') 
+         if (1.le.ik.and.ik.le.9)    write(pfile(16:16),'(I1)') ik
+         if (10.le.ik.and.ik.le.99)    write(pfile(15:16),'(I2)') ik
+         if (100.le.ik.and.ik.le.999)    write(pfile(14:16),'(I3)') ik
+         if (1000.le.ik.and.ik.le.9999)    write(pfile(13:16),'(I4)') ik
+         if (10000.le.ik) call error_stop('Only up to 9999 kpoints allow  &
+     &ed') 
+         inquire(file=pfile, exist=file_found)
+         error_string=""
+         write(error_string,'("File ",A19," not found")')pfile
+         if (.not.file_found) call error_stop(trim(adjustl(error_string)  &
+     &))
+             !    
+             ! begin read PARCHG.IB1.IK.Ri_dir_perp,
+             !    
+            open(unit=fileunit,file=pfile,status='old')
+            read(fileunit,*) PARCHGAV_H(1:n_perp)
+            close(fileunit)
+             !    
+             ! end read PARCHG.IB1.IK.Ri_dir_perp
+             !    
+         pfile="PARCHG.0000.0000.R"
+         write(pfile(19:19),'(I1)') i_dir_perp
+         if (1.le.ib2.and.ib2.le.9)    write(pfile(11:11),'(I1)') ib2
+         if (10.le.ib2.and.ib2.le.99)    write(pfile(10:11),'(I2)') ib2
+         if (100.le.ib2.and.ib2.le.999)    write(pfile(9:11),'(I3)') ib2
+         if (1000.le.ib2.and.ib2.le.9999)  write(pfile(8:11),'(I4)') ib2
+         if (10000.le.ib2) call error_stop('Only up to 9999 bands allowe  &
+     &d') 
+         if (1.le.ik.and.ik.le.9)    write(pfile(16:16),'(I1)') ik
+         if (10.le.ik.and.ik.le.99)    write(pfile(15:16),'(I2)') ik
+         if (100.le.ik.and.ik.le.999)    write(pfile(14:16),'(I3)') ik
+         if (1000.le.ik.and.ik.le.9999)    write(pfile(13:16),'(I4)') ik
+         if (10000.le.ik) call error_stop('Only up to 9999 kpoints allow  &
+     &ed') 
+         inquire(file=pfile, exist=file_found)
+         error_string=""
+         write(error_string,'("File ",A19," not found")')pfile
+         if (.not.file_found) call error_stop(trim(adjustl(error_string)  &
+     &))
+             !    
+             ! begin read PARCHG.IB2.IK.Ri_dir_perp
+             !    
+            open(unit=fileunit,file=pfile,status='old')
+            read(fileunit,*) PARCHGAV_E(1:n_perp)
+            close(fileunit)
+             !    
+             ! end read PARCHG.IB2.IK.Ri_dir_perp
+             !    
+
+             select case(smearing)
+             case('fermi')
+             occ_v=fermi_dist(eigenvalues(ik,ib1,ispin)-efermi,sigma)
+             occ_c=fermi_dist(eigenvalues(ik,ib2,ispin)-efermi,sigma)
+             delta_epsilon2=                                              &
+     &          conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+     &         *delta_function_fermi(eigenvalues(ik,ib2,ispin)            &
+     &         -eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+     &         *kweights(ik)*(occ_v-occ_c)
+               ! contributions from negative frequencies:
+             delta_epsilon2=delta_epsilon2                                &
+     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+     &         *delta_function_fermi(-eigenvalues(ik,ib2,ispin)           &
+     &         +eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+     &         *kweights(ik)*(occ_v-occ_c)
+             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)        &
+     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+     &         *delta_function_fermi(eigenvalues(ik,ib2,ispin)            &
+     &         -eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+     &         *kweights(ik)*(occ_v-occ_c)
+               ! contributions from negative frequencies:
+             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)        &
+     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+     &         *delta_function_fermi(-eigenvalues(ik,ib2,ispin)           &
+     &         +eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+     &         *kweights(ik)*(occ_v-occ_c)
+             case('gaussian')
+             occ_v=gaussian_dist(eigenvalues(ik,ib1,ispin)-efermi,sigma)
+             occ_c=gaussian_dist(eigenvalues(ik,ib2,ispin)-efermi,sigma)
+             delta_epsilon2=                                              &
+     &          conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+     &         *delta_function_gaussian(eigenvalues(ik,ib2,ispin)         &
+     &         -eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+     &         *kweights(ik)*(occ_v-occ_c)
+               ! contributions from negative frequencies:
+             delta_epsilon2=delta_epsilon2                                &
+     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+     &         *delta_function_gaussian(-eigenvalues(ik,ib2,ispin)        &
+     &         +eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+     &         *kweights(ik)*(occ_v-occ_c)
+             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)        &
+     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+     &         *delta_function_gaussian(eigenvalues(ik,ib2,ispin)         &
+     &         -eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+     &         *kweights(ik)*(occ_v-occ_c)
+               ! contributions from negative frequencies:
+             epsilon2(idir,jdir,iomega)=epsilon2(idir,jdir,iomega)        &
+     &         +conjg(matrix_elements(ib2,ib1,ik,ispin,idir))             &
+     &         *matrix_elements(ib2,ib1,ik,ispin,jdir)                    &
+     &         *delta_function_gaussian(-eigenvalues(ik,ib2,ispin)        &
+     &         +eigenvalues(ik,ib1,ispin)-omega(iomega),sigma)            &
+     &         *kweights(ik)*(occ_v-occ_c)
+           case default
+             goto 100
+           end select
+             ! 
+             ! begin add PARCHG_E * delta_epsilon2, PARCHG_H * delta_epsilon2
+             ! 
+             do i_perp=1,n_perp
+               epsilon2_loc(idir,jdir,iomega,i_perp,1)                    &
+     &         =epsilon2_loc(idir,jdir,iomega,i_perp,1)                   &
+     &            +delta_epsilon2*PARCHGAV_H(i_perp)
+               epsilon2_loc(idir,jdir,iomega,i_perp,2)                    &
+     &         =epsilon2_loc(idir,jdir,iomega,i_perp,2)                   &
+     &            +delta_epsilon2*PARCHGAV_E(i_perp)
+             end do 
+             ! 
+             ! end add PARCHG_E * delta_epsilon2, PARCHG_H * delta_epsilon2
+             ! 
+           end do ! ib2
+           end do ! ib1
+          end do ! ik
+         end do ! ispin
+         if (mod(iomega*10,nomega).lt.10) print'(8x,"i,j,omega=",x,I0,x,  &
+     &     I0,x,F12.6)',idir,jdir,omega(iomega)
+         ! write to files LOCAL_EPSILON2_I_J_E, LOCAL_EPSILON2_I_J_H
+         ! do i_perp=1,n_perpwrite i_perp, omega(iomega),
+         ! delta_epsilon2*PARCHG_
+       end do !iomega
+      end do ! jdir
+      end do ! idir
+      epsilon2=epsilon2*4.0d0*pi**2/vol*bohr*Ryd*2.0d0
+      epsilon2_loc=epsilon2_loc*4.0d0*pi**2/vol*bohr*Ryd*2.0d0
+      if (nspins==1.and..not.lnoncollinear) epsilon2=2.0d0*epsilon2
+      if (nspins==1.and..not.lnoncollinear)                               &
+     &    epsilon2_loc=2.0d0*epsilon2_loc
+      !
+      ! end calculate epsilon
+      
+      ! begin write epsilon2
+      !
+      ! open file
+      open(fileunit,FILE='EPS2_FROM_WAVEDER.DAT',STATUS='REPLACE')
+      ! write header information
+      write(fileunit,'(" # nspins nkpoints n_vbands n_cbands",4I6)')      &
+     &       size(spins),nkpoints,size(vbands),size(cbands)
+      ! write epsilon
+      write(fileunit,'("# omega eps2(1,1) eps2(2,2), eps2(3,3), eps2(1,2  &
+     &) eps2(2,3) eps2(1,3)")')
+      do iomega=1,nomega
+!           write(fileunit,'(F15.6,1x,6(e13.5))')                          &
+!           write(fileunit,'(F15.6,1x,6(e16.6))')                          &
+           write(fileunit,'(F15.6,1x,6(E15.6E3))')                        &
+     &        omega(iomega),epsilon2(1,1,iomega),epsilon2(2,2,iomega),    &
+     &        epsilon2(3,3,iomega),epsilon2(1,2,iomega),epsilon2(2,3,     &
+     &        iomega),epsilon2(3,1,iomega)
+      end do ! iomega
+      ! close
+      close(fileunit)
+      !
+      ! end write epsilon2
+      !
+      ! begin write epsilon2_loc (holes)
+      !
+      ! open file
+      open(fileunit,FILE='EPS2_LOC_H.DAT',STATUS='REPLACE')
+      ! write header information
+      write(fileunit,'(" # nspins nkpoints n_vbands n_cbands",4I6)')      &
+     &       size(spins),nkpoints,size(vbands),size(cbands)
+      ! write epsilon
+      write(fileunit,'("# iperp, omega eps2(1,1) eps2_loc(2,2),           &
+     &eps2_loc(3,3),eps2_loc(1,2) eps2_loc(2,3) eps2_loc(1,3)")')
+      do iomega=1,nomega
+        do i_perp=1,n_perp
+           write(fileunit,'(I9,F15.6,1x,6(E15.6E3))') i_perp,             &
+     &     omega(iomega),epsilon2_loc(1,1,iomega,i_perp,1),               &
+     &     epsilon2_loc(2,2,iomega,i_perp,1),                             &
+     &     epsilon2_loc(3,3,iomega,i_perp,1),                             &
+     &     epsilon2_loc(1,2,iomega,i_perp,1),                             &
+     &     epsilon2_loc(2,3,iomega,i_perp,1),                             &
+     &     epsilon2_loc(3,1,iomega,i_perp,1)
+        end do ! i_perp
+        write(fileunit,'(" ")')
+      end do ! iomega
+      ! close
+      close(fileunit)
+      !
+      ! end write epsilon2_loc(holes)
+      !
+      !
+      ! begin write epsilon2_loc (electrons)
+      !
+      ! open file
+      open(fileunit,FILE='EPS2_LOC_E.DAT',STATUS='REPLACE')
+      ! write header information
+      write(fileunit,'(" # nspins nkpoints n_vbands n_cbands",4I6)')      &
+     &       size(spins),nkpoints,size(vbands),size(cbands)
+      ! write epsilon
+      write(fileunit,'("# iperp, omega eps2(1,1) eps2_loc(2,2),           &
+     &eps2_loc(3,3),eps2_loc(1,2) eps2_loc(2,3) eps2_loc(1,3)")')
+      do iomega=1,nomega
+        do i_perp=1,n_perp
+           write(fileunit,'(I9,F15.6,1x,6(E15.6E3))')  i_perp,            &
+     &     omega(iomega),epsilon2_loc(1,1,iomega,i_perp,2),               &
+     &     epsilon2_loc(2,2,iomega,i_perp,2),                             &
+     &     epsilon2_loc(3,3,iomega,i_perp,2),                             &
+     &     epsilon2_loc(1,2,iomega,i_perp,2),                             &
+     &     epsilon2_loc(2,3,iomega,i_perp,2),                             &
+     &     epsilon2_loc(3,1,iomega,i_perp,2)
+        end do ! i_perp
+        write(fileunit,'(" ")')
+      end do ! iomega
+      ! close
+      close(fileunit)
+      !
+      ! end write epsilon2_loc(electrons)
+      !
+      !
+      ! begin write epsilon2_loc (electrons minus holes)
+      !
+      ! open file
+      open(fileunit,FILE='EPS2_LOC_E_MINUS_H.DAT',STATUS='REPLACE')
+      ! write header information
+      write(fileunit,'(" # nspins nkpoints n_vbands n_cbands",4I6)')      &
+     &       size(spins),nkpoints,size(vbands),size(cbands)
+      ! write epsilon
+      write(fileunit,'("# iperp, omega eps2(1,1) eps2_loc(2,2),           &
+     &eps2_loc(3,3),eps2_loc(1,2) eps2_loc(2,3) eps2_loc(1,3)")')
+      do iomega=1,nomega
+        do i_perp=1,n_perp
+           write(fileunit,'(I9,F15.6,1x,6(E15.6E3))')  i_perp,            &
+     &     omega(iomega),epsilon2_loc(1,1,iomega,i_perp,2)                &
+     &     -epsilon2_loc(1,1,iomega,i_perp,1),                            &
+     &     epsilon2_loc(2,2,iomega,i_perp,2)                              &
+     &     -epsilon2_loc(2,2,iomega,i_perp,1),                            &
+     &     epsilon2_loc(3,3,iomega,i_perp,2)                              &
+     &     -epsilon2_loc(3,3,iomega,i_perp,1),                            &
+     &     epsilon2_loc(1,2,iomega,i_perp,2)                              &
+     &     -epsilon2_loc(1,2,iomega,i_perp,1),                            &
+     &     epsilon2_loc(2,3,iomega,i_perp,2)                              &
+     &     -epsilon2_loc(2,3,iomega,i_perp,1),                            &
+     &     epsilon2_loc(3,1,iomega,i_perp,2)                              &
+     &     -epsilon2_loc(3,1,iomega,i_perp,1)               
+        end do ! i_perp
+        write(fileunit,'(" ")')
+      end do ! iomega
+      ! close
+      close(fileunit)
+      !
+      ! end write epsilon2_loc(electrons minus holes)
+      !
+      ! begin write epsilon2_loc (electrons minus holes/electrons plus
+      ! holes)
+      !
+      ! open file
+      open(fileunit,FILE='EPS2_LOC_E_MINUS_H_OVER_E_PLUS_H.DAT',          &
+     &STATUS='REPLACE')
+      ! write header information
+      write(fileunit,'(" # nspins nkpoints n_vbands n_cbands",4I6)')      &
+     &       size(spins),nkpoints,size(vbands),size(cbands)
+      ! write epsilon
+      write(fileunit,'("# iperp, omega eps2(1,1) eps2_loc(2,2),           &
+     &eps2_loc(3,3),eps2_loc(1,2) eps2_loc(2,3) eps2_loc(1,3)")')
+      do iomega=1,nomega
+        do i_perp=1,n_perp
+           dum1=0.0d0
+           dum2=0.0d0
+           dum3=0.0d0
+           dum4=0.0d0
+           dum5=0.0d0
+           dum6=0.0d0
+           tol=1D-12
+           if (epsilon2_loc(1,1,iomega,i_perp,1).gt.tol.or.               &
+     &         epsilon2_loc(1,1,iomega,i_perp,2).gt.tol)                  &
+     &          dum1=(epsilon2_loc(1,1,iomega,i_perp,2)-                   &
+     &            epsilon2_loc(1,1,iomega,i_perp,1))/                      &
+     &           (epsilon2_loc(1,1,iomega,i_perp,2)+                      &
+     &            epsilon2_loc(1,1,iomega,i_perp,1)     )      
+           if (epsilon2_loc(2,2,iomega,i_perp,1).gt.tol.or.               &
+     &         epsilon2_loc(2,2,iomega,i_perp,2).gt.tol)                  &
+     &          dum2=(epsilon2_loc(2,2,iomega,i_perp,2)-                   &
+     &            epsilon2_loc(2,2,iomega,i_perp,1))/                      &
+     &           (epsilon2_loc(2,2,iomega,i_perp,2)+                      &
+     &            epsilon2_loc(2,2,iomega,i_perp,1)    )       
+           if (epsilon2_loc(3,3,iomega,i_perp,1).gt.tol.or.               &
+     &         epsilon2_loc(3,3,iomega,i_perp,2).gt.tol)                  &
+     &          dum3=(epsilon2_loc(3,3,iomega,i_perp,2)-                   &
+     &            epsilon2_loc(3,3,iomega,i_perp,1))/                      &
+     &           (epsilon2_loc(3,3,iomega,i_perp,2)+                      &
+     &            epsilon2_loc(3,3,iomega,i_perp,1)   )        
+           if (epsilon2_loc(1,2,iomega,i_perp,1).gt.tol.or.               &
+     &         epsilon2_loc(1,2,iomega,i_perp,2).gt.tol)                  &
+     &          dum4=(epsilon2_loc(1,2,iomega,i_perp,2)-                   &
+     &            epsilon2_loc(1,2,iomega,i_perp,1))/                      &
+     &           (epsilon2_loc(1,2,iomega,i_perp,2)+                      &
+     &            epsilon2_loc(1,2,iomega,i_perp,1)  )         
+           if (epsilon2_loc(2,3,iomega,i_perp,1).gt.tol.or.               &
+     &         epsilon2_loc(2,3,iomega,i_perp,2).gt.tol)                  &
+     &          dum5=(epsilon2_loc(2,3,iomega,i_perp,2)-                   &
+     &            epsilon2_loc(2,3,iomega,i_perp,1))/                      &
+     &           (epsilon2_loc(2,3,iomega,i_perp,2)+                      &
+     &            epsilon2_loc(2,3,iomega,i_perp,1) )          
+           if (epsilon2_loc(3,1,iomega,i_perp,1).gt.tol.or.               &
+     &         epsilon2_loc(3,1,iomega,i_perp,2).gt.tol)                  &
+     &          dum6=(epsilon2_loc(3,1,iomega,i_perp,2)-                   &
+     &            epsilon2_loc(3,1,iomega,i_perp,1))/                      &
+     &           (epsilon2_loc(3,1,iomega,i_perp,2)+                      &
+     &            epsilon2_loc(3,1,iomega,i_perp,1))           
+           write(fileunit,'(I9,F15.6,1x,6(E15.6E3))')  i_perp,            &
+     &     omega(iomega),dum1,dum2,dum3,dum4,dum5,dum6                    &
+        end do ! i_perp
+        write(fileunit,'(" ")')
+      end do ! iomega
+      ! close
+      close(fileunit)
+      !
+      ! end write epsilon2_loc(electrons minus holes)
+      !
+      !
+      print fsubendext,'vasp_eps2_IPA_local_av'  
+      return
+      !
+100   close(fileunit)
+      call error_stop('unknown electronic smearing')      
+      !
+      end subroutine vasp_eps2_IPA_local_av
+
+c---------------------------------------------------------------------
+
+      subroutine vasp_BSE_trans_dens(lambda)
+      ! 
+      ! reads binary vasp output file WAVEDER and formatted file
+      ! BSEFATBAND and calculates transition densities from Eq. (3) in
+      ! Körbel, "Optical signatures of defects in BiFeO$_3$, PRM 7 (10),
+      ! 104402 (2023), url:  https://link.aps.org/doi/10.1103/PhysRevMaterials.7.104402
+      !  
+      use defs             
+      use misc, only: getspecies
+      !
+      implicit none
+      !
+      integer lambda
+      logical file_found,lnoncollinear
+      integer fileunit
+      integer, parameter :: q=selected_real_kind(10)
+      integer,parameter :: qs=selected_real_kind(5)
+      !
+      integer, allocatable :: vbands(:),cbands(:),spins(:),               &
+     &   kpoints_table(:)        
+      double precision efermi,vol
+!      double precision,allocatable :: eigenvalues(:,:,:) ! energy eigenvalues for each kpoint, band, spin
+      double precision, allocatable :: kpoint_coords_full(:,:),           &
+     &   kpoint_coords_irred(:,:)
+      double precision, allocatable :: kweights_full(:),                  &
+     k   kweights_irred(:)
+      real :: nodes_in_epsilon
+      integer :: nkpoints_full,nkpoints_irred, nbands_tot,nspins,         &
+     &   ncbands_eps     ! number of bands considered for epsilon
+      real omega_plasmon(1:3,1:3)
+      complex(qs), allocatable :: matrix_elements(:,:,:,:,:)
+      integer ispin,ik,jk,ib1,ib2
+      complex,allocatable :: Amat(:,:,:,:)
+      double precision, allocatable :: BSE_rho_ele(:,:,:),                &
+     &   BSE_rho_hole(:,:,:) ! transition densities of ele and hole (x,y,z)
+      double precision, allocatable :: CD(:,:,:) ! parchg
+      integer ncbands_BSE,nvbands_BSE,VBM,CBM,VB_min,CB_max
+      integer i,ngx,ngy,ngz
+      character*256 chardum,error_string
+      character*1024 pfile
+      type(atom),allocatable :: atoms(:)
+      type(element), allocatable :: species(:)
+      double precision vecs(3,3)
+      !
+      print fsubstart,'vasp_BSE_trans_dens'  
+      !
+      print '(8x,"BSE eigenvalue no ",I0)',lambda
+      !
+      ! begin get volume
+      !
+      call vasp_read_volume(vol)
+      !
+      ! end get volume
+      !
+      ! begin read Fermi energy
+      !
+      call vasp_read_fermi_energy(efermi)
+      efermi=efermi+0.02d0 ! move Fermi energy a bit above the VBM
+      !
+      ! end read Fermi energy
+      !
+      ! begin read LNONCOLLINEAR
+      !
+      lnoncollinear=.FALSE.
+      call vasp_read_lnoncollinear(lnoncollinear)
+      if(talk) print '(8x,"noncollinear run: ",L1)', lnoncollinear
+      !
+      ! end read LNONCOLLINEAR
+      !
+      ! begin read NBANDS_BSE
+      !
+      call vasp_read_OUTCAR_string("NBANDSO",chardum)
+      read(chardum,*) nvbands_BSE
+      print '(8x,"using ",I0," VB in the BSE.")',nvbands_BSE
+      call vasp_read_OUTCAR_string("NBANDSV",chardum)
+      read(chardum,*) ncbands_BSE
+      print '(8x,"using ",I0," CB in the BSE.")',ncbands_BSE
+      call vasp_read_OUTCAR_string("VB(min)",chardum)
+      read(chardum,*) VB_min
+      VBM=VB_min+nvbands_BSE-1
+      print '(8x,"VBM is in band ",I0)',VBM
+      call vasp_read_OUTCAR_string("CB(min)",chardum)
+      read(chardum,*) CBM
+      print '(8x,"CBM is in band ",I0)',CBM
+!      VB_min=VBM-nvbands_BSE+1
+      CB_max=CBM+ncbands_BSE-1
+      print '(8x,"lowest BSE band: ",I0)',VB_min
+      print '(8x,"highest BSE band: ",I0)',CB_max
+      !
+      ! begin read WAVEDER
+      !
+      inquire(file="WAVEDER", exist=file_found)
+      if (.not.file_found) call error_stop('WAVEDER not found')
+      !
+      fileunit=51
+      open(unit=fileunit,file='WAVEDER',form='unformatted',               &
+     &   status='old')
+      read(fileunit) nbands_tot, ncbands_eps, nkpoints_irred, nspins
+      print '(8x,I0," bands in total, ",I0," cond. bands for epsilon, ",  &
+     &        I0," kpoints, ",I0," spins")',nbands_tot,ncbands_eps,       &
+     &        nkpoints_irred,nspins
+      allocate(vbands(nbands_tot))
+      do ib1=1,nbands_tot
+        vbands(ib1)=ib1
+      end do
+      print '(8x,"Using ",I0," valence bands")',size(vbands)
+      ! To Do: Check if it's better to use ncbands_eps instead of
+      ! nbands_tot
+      allocate(cbands(nbands_tot))
+      do ib1=1,nbands_tot
+        cbands(ib1)=ib1
+      end do
+      print '(8x,"Using ",I0," conduction bands")',size(cbands)
+      allocate(spins(nspins))
+      do ispin=1,nspins
+        spins(ispin)=ispin
+      end do
+      print '(8x,"Using ",I0," spins")',size(spins)
+      print '(8x,"Using ",I0," kpoints")',nkpoints_irred
+      allocate(matrix_elements(nbands_tot, ncbands_eps, nkpoints_irred,   &
+     &         nspins, 3))
+      matrix_elements=(0.0d0,0.0d0)
+      read(fileunit) nodes_in_epsilon
+      read(fileunit) omega_plasmon
+      read(fileunit) matrix_elements(:,:,1:nkpoints_irred,:,:)
+      close(fileunit)
+      !
+      ! end read WAVEDER
+      !
+C      ! begin read eigenvalues and weights
+C      !
+C      call vasp_read_eigenvalues_and_weights(eigenvalues,kweights)
+C      !
+C      ! end read eigenvalues and weights
+      ! 
+      ! begin read kpoint coords
+      !
+      !call vasp_read_IBZKPT(kpoint_coords_full,kweights_full)
+      call vasp_read_kpoints_table(kpoint_coords_full,kweights_full,      &
+     &   kpoints_table)
+      nkpoints_full=size(kweights_full)
+      call vasp_read_kpoints_irred(kpoint_coords_irred,kweights_irred)
+      !
+      ! DEBUG
+      print'(8x,"all kpoints (coords, weights, irr. rep.:)")'
+      do ik=1,nkpoints_full
+        print'(8x,4(F20.10),I16)',kpoint_coords_full(ik,1:3),              &
+     &     kweights_full(ik),kpoints_table(ik)
+      end do
+      print'(8x,"irr. kpoints (coords, weights:)")'
+      do ik=1,nkpoints_irred
+        print'(8x,4(F20.10))',kpoint_coords_irred(ik,:),                  &
+     &  kweights_irred(ik)
+      end do
+      ! END DEBUG
+      !
+      ! end read kpoint coords
+      ! 
+      !
+      ! begin check if PARCHG files are present
+      ! 
+      do jk=1,nkpoints_irred
+       do ib1=VB_min,CB_max ! valence bands
+         pfile="PARCHG.0000.0000"
+         if (1.le.ib1.and.ib1.le.9)    write(pfile(11:11),'(I1)') ib1
+         if (10.le.ib1.and.ib1.le.99)    write(pfile(10:11),'(I2)') ib1
+         if (100.le.ib1.and.ib1.le.999)    write(pfile(9:11),'(I3)') ib1
+         if (1000.le.ib1.and.ib1.le.9999)  write(pfile(8:11),'(I4)') ib1
+         if (10000.le.ib1) call error_stop('Only up to 9999 bands allowe  &
+     &d') 
+         if (1.le.jk.and.jk.le.9)    write(pfile(16:16),'(I1)') jk
+         if (10.le.jk.and.jk.le.99)    write(pfile(15:16),'(I2)') jk
+         if (100.le.jk.and.jk.le.999)    write(pfile(14:16),'(I3)') jk
+         if (1000.le.jk.and.jk.le.9999)    write(pfile(13:16),'(I4)') jk
+         if (10000.le.jk) call error_stop('Only up to 9999 kpoints allow  &
+     &ed') 
+         inquire(file=pfile, exist=file_found)
+         error_string=""
+         write(error_string,'("File ",A19," not found")')pfile
+         if (.not.file_found) call error_stop(trim(adjustl(error_string)  &
+     &))
+       end do ! ib1 
+      end do ! jk 
+      call vasp_read_CHG(pfile,CD,atoms,species,vecs)
+      ngx=size(CD,1)
+      ngy=size(CD,2)
+      ngz=size(CD,3)
+      !
+      ! end check if PARCHG files are present
+      !
+      ! begin read BSEFATBAND
+      !
+      allocate(Amat(nkpoints_full,nbands_tot,nbands_tot,nspins))
+      Amat=0.0d0
+      call vasp_read_BSEFATBAND(kpoint_coords_full,kweights_full,nspins,  &
+     &   Amat,lambda)
+!      !
+!      ! BEGIN DEBUG 
+!      open(51,file='AMAT_from_BSE_DENS',status='replace') 
+!      do ik=1,size(AMAT,1)
+!       do ib1=1,size(AMAT,2)
+!        do ib2=1,size(AMAT,3)
+!         do ispin=1,size(AMAT,4)
+!          write(51,*) ik, ib1,ib2,ispin,                                  &
+!     &     REAL(AMAT(ik,ib1,ib2,ispin)),AIMAG(AMAT(ik,ib1,ib2,ispin))
+!         end do
+!        end do
+!       end do
+!      end do
+!      close(51)
+!      !
+!      ! END DEBUG 
+      !
+      ! end read BSEFATBAND
+      !
+      ! begin calculate transition density
+      !
+      ! hole: 
+      !
+      allocate(BSE_rho_hole(1:ngx,1:ngy,1:ngz))
+      BSE_rho_hole=0.0d0
+      do ispin=1,nspins
+       do jk=1,nkpoints_irred
+        do ik=1,nkpoints_full
+         if (jk==kpoints_table(ik)) then
+          !jk=kpoints_table(ik) ! jk: irreducible representative of ik
+          print '(8x,"working on kpoint ",I0)',ik
+          do ib1=VB_min,VBM ! valence bands
+           pfile="PARCHG.0000.0000"
+           if (1.le.ib1.and.ib1.le.9)   write(pfile(11:11),'(I1)') ib1
+           if (10.le.ib1.and.ib1.le.99)  write(pfile(10:11),'(I2)') ib1
+           if (100.le.ib1.and.ib1.le.999)  write(pfile(9:11),'(I3)')ib1
+           if (1000.le.ib1.and.ib1.le.9999) write(pfile(8:11),'(I4)')ib1
+           if (10000.le.ib1) call error_stop('Only up to 9999 bands allo  &
+     &wed')
+           if (1.le.jk.and.jk.le.9)    write(pfile(16:16),'(I1)') jk
+           if (10.le.jk.and.jk.le.99)    write(pfile(15:16),'(I2)') jk
+           if (100.le.jk.and.jk.le.999)   write(pfile(14:16),'(I3)') jk
+           if (1000.le.jk.and.jk.le.9999)   write(pfile(13:16),'(I4)')jk
+           if (10000.le.jk) call error_stop('Only up to 9999 kpoints all  &
+     &owed') 
+           call vasp_read_CHG(pfile,CD,atoms,species,vecs)
+           do ib2=CBM,CB_max ! conduction bands
+            BSE_rho_hole=BSE_rho_hole+abs(Amat(ik,ib1,ib2,ispin))**2 *    &
+     &           dot_product(matrix_elements(ib2,ib1,jk,ispin,1:3)        &
+     &           ,matrix_elements(ib2,ib1,jk,ispin,1:3)) *CD
+           end do ! ib2
+          end do ! ib1
+         end if ! jk==kpoints_table(ik)
+        end do ! ik
+       end do ! jk
+      end do ! ispin
+      !
+      ! ele:
+      !
+      allocate(BSE_rho_ele(1:ngx,1:ngy,1:ngz))
+      BSE_rho_ele=0.0d0
+      !
+      do ispin=1,nspins
+       do jk=1,nkpoints_irred
+        do ik=1,nkpoints_full
+         if (jk==kpoints_table(ik)) then
+          !jk=kpoints_table(ik) ! jk: irreducible representative of ik
+          print '(8x,"working on kpoint ",I0)',ik
+          do ib2=CBM,CB_max ! conduction bands
+           pfile="PARCHG.0000.0000"
+           if (1.le.ib2.and.ib2.le.9)   write(pfile(11:11),'(I1)') ib2
+           if (10.le.ib2.and.ib2.le.99)  write(pfile(10:11),'(I2)') ib2
+           if (100.le.ib2.and.ib2.le.999) write(pfile(9:11),'(I3)') ib2
+           if (1000.le.ib2.and.ib2.le.9999)write(pfile(8:11),'(I4)') ib2
+           if (10000.le.ib2) call error_stop('Only up to 9999 bands allo  &
+     &wed') 
+           if (1.le.jk.and.jk.le.9)  write(pfile(16:16),'(I1)') jk
+           if (10.le.jk.and.jk.le.99) write(pfile(15:16),'(I2)') jk
+           if (100.le.jk.and.jk.le.999)write(pfile(14:16),'(I3)') jk
+           if (1000.le.jk.and.jk.le.9999)write(pfile(13:16),'(I4)') jk
+           if (10000.le.jk) call error_stop('Only up to 9999 kpoints all  &
+     &owed') 
+           call vasp_read_CHG(pfile,CD,atoms,species,vecs)
+           do ib1=VB_min,VBM ! valence bands
+             BSE_rho_ele=BSE_rho_ele+abs(Amat(ik,ib1,ib2,ispin))**2 *     &
+     &           dot_product(matrix_elements(ib2,ib1,jk,ispin,1:3)        &
+     &           ,matrix_elements(ib2,ib1,jk,ispin,1:3))    *CD
+           end do ! ib1
+          end do ! ib2
+         end if ! jk==kpoints_table(ik)
+        end do ! ik
+       end do ! jk
+      end do ! ispin
+      !
+      ! end calculate transition density
+      
+      ! begin write transition density
+      !
+      call write_CHG(atoms,species,vecs,'BSE_TRANS_DENS_E.vasp',          &
+     &     BSE_rho_ele)
+      call write_CHG(atoms,species,vecs,'BSE_TRANS_DENS_H.vasp',          &
+     &     BSE_rho_hole)
+      deallocate(BSE_rho_ele,BSE_rho_hole)
+      !
+      ! end write BSE transition densities
+      !
+      !
+      print fsubendext,'vasp_BSE_trans_dens'  
+      return
+      !
+100   close(fileunit)
+      call error_stop('unknown')      
+      !
+      end subroutine vasp_BSE_trans_dens
+
+c---------------------------------------------------------------------
+
+      subroutine vasp_BSE_dens(lambda)
+      ! 
+      ! similar to BSE_trans_dens, but without optical matrix elements
+      !  
+      use defs             
+      use misc, only: getspecies
+      !
+      implicit none
+      !
+      integer lambda
+      logical file_found,lnoncollinear
+      integer fileunit
+      integer, parameter :: q=selected_real_kind(10)
+      integer,parameter :: qs=selected_real_kind(5)
+      !
+      integer, allocatable :: vbands(:),cbands(:),spins(:),               &
+     &   kpoints_table(:)        
+      double precision efermi,vol
+!      double precision,allocatable :: eigenvalues(:,:,:) ! energy eigenvalues for each kpoint, band, spin
+      double precision, allocatable :: kpoint_coords_full(:,:),           &
+     &   kpoint_coords_irred(:,:)
+      double precision, allocatable :: kweights_full(:),                  &
+     k   kweights_irred(:)
+      real :: nodes_in_epsilon
+      integer :: nkpoints_full,nkpoints_irred, nbands_tot,nspins,         &
+     &   ncbands_eps     ! number of bands considered for epsilon
+      real omega_plasmon(1:3,1:3)
+      complex(qs), allocatable :: matrix_elements(:,:,:,:,:)
+      integer ispin,ik,jk,ib1,ib2
+      complex,allocatable :: Amat(:,:,:,:)
+      double precision, allocatable :: BSE_rho_ele(:,:,:),                &
+     &   BSE_rho_hole(:,:,:) ! transition densities of ele and hole (x,y,z)
+      double precision, allocatable :: CD(:,:,:) ! parchg
+      integer ncbands_BSE,nvbands_BSE,VBM,CBM,VB_min,CB_max
+      integer i,ngx,ngy,ngz
+      character*256 chardum,error_string
+      character*1024 pfile
+      type(atom),allocatable :: atoms(:)
+      type(element), allocatable :: species(:)
+      double precision vecs(3,3),AMATABS
+      !
+      print fsubstart,'vasp_BSE_dens'  
+      !
+      print '(8x,"BSE eigenvalue no ",I0)',lambda
+      !
+      ! begin get volume
+      !
+      call vasp_read_volume(vol)
+      !
+      ! end get volume
+      !
+      ! begin read Fermi energy
+      !
+      call vasp_read_fermi_energy(efermi)
+      efermi=efermi+0.02d0 ! move Fermi energy a bit above the VBM
+      !
+      ! end read Fermi energy
+      !
+      ! begin read LNONCOLLINEAR
+      !
+      lnoncollinear=.FALSE.
+      call vasp_read_lnoncollinear(lnoncollinear)
+      if(talk) print '(8x,"noncollinear run: ",L1)', lnoncollinear
+      !
+      ! end read LNONCOLLINEAR
+      !
+      call vasp_read_OUTCAR_string("ISPIN",chardum)
+      read(chardum,*) nspins
+      !
+      ! begin read NBANDS_BSE
+      !
+      call vasp_read_OUTCAR_string("NBANDSO",chardum)
+      read(chardum,*) nvbands_BSE
+      print '(8x,"using ",I0," VB in the BSE.")',nvbands_BSE
+      call vasp_read_OUTCAR_string("NBANDSV",chardum)
+      read(chardum,*) ncbands_BSE
+      print '(8x,"using ",I0," CB in the BSE.")',ncbands_BSE
+      call vasp_read_OUTCAR_string("VB(min)",chardum)
+      read(chardum,*) VB_min
+      VBM=VB_min+nvbands_BSE-1
+      print '(8x,"VBM is in band ",I0)',VBM
+      call vasp_read_OUTCAR_string("CB(min)",chardum)
+      read(chardum,*) CBM
+      print '(8x,"CBM is in band ",I0)',CBM
+!      VB_min=VBM-nvbands_BSE+1
+      CB_max=CBM+ncbands_BSE-1
+      print '(8x,"lowest BSE band, VB_min: ",I0)',VB_min
+      print '(8x,"highest BSE band, CB_max: ",I0)',CB_max
+      ! 
+      ! begin read kpoint coords
+      !
+      call vasp_read_kpoints_table(kpoint_coords_full,kweights_full,      &
+     &   kpoints_table)
+      nkpoints_full=size(kweights_full)
+      call vasp_read_kpoints_irred(kpoint_coords_irred,kweights_irred)
+      nkpoints_irred=size(kweights_irred)
+      !
+      ! DEBUG
+      print'(8x,"all kpoints (coords, weights, irr. rep.:)")'
+      do ik=1,nkpoints_full
+        print'(8x,4(F20.10),I16)',kpoint_coords_full(ik,1:3),              &
+     &     kweights_full(ik),kpoints_table(ik)
+      end do
+      print'(8x,"irr. kpoints (coords, weights:)")'
+      do ik=1,nkpoints_irred
+        print'(8x,4(F20.10))',kpoint_coords_irred(ik,:),                  &
+     &  kweights_irred(ik)
+      end do
+      ! END DEBUG
+      !
+      ! end read kpoint coords
+      ! 
+      !
+      ! begin check if PARCHG files are present
+      ! 
+      do jk=1,nkpoints_irred
+       do ib1=VB_min,CB_max ! valence bands
+         pfile="PARCHG.0000.0000"
+         if (1.le.ib1.and.ib1.le.9)    write(pfile(11:11),'(I1)') ib1
+         if (10.le.ib1.and.ib1.le.99)    write(pfile(10:11),'(I2)') ib1
+         if (100.le.ib1.and.ib1.le.999)    write(pfile(9:11),'(I3)') ib1
+         if (1000.le.ib1.and.ib1.le.9999)  write(pfile(8:11),'(I4)') ib1
+         if (10000.le.ib1) call error_stop('Only up to 9999 bands allowe  &
+     &d') 
+         if (1.le.jk.and.jk.le.9)    write(pfile(16:16),'(I1)') jk
+         if (10.le.jk.and.jk.le.99)    write(pfile(15:16),'(I2)') jk
+         if (100.le.jk.and.jk.le.999)    write(pfile(14:16),'(I3)') jk
+         if (1000.le.jk.and.jk.le.9999)    write(pfile(13:16),'(I4)') jk
+         if (10000.le.jk) call error_stop('Only up to 9999 kpoints allow  &
+     &ed') 
+         inquire(file=pfile, exist=file_found)
+         error_string=""
+         write(error_string,'("File ",A19," not found")')pfile
+         if (.not.file_found) call error_stop(trim(adjustl(error_string)  &
+     &))
+       end do ! ib1 
+      end do ! jk 
+      call vasp_read_CHG(pfile,CD,atoms,species,vecs)
+      ngx=size(CD,1)
+      ngy=size(CD,2)
+      ngz=size(CD,3)
+      !
+      ! end check if PARCHG files are present
+      !
+      ! begin read BSEFATBAND
+      !
+      !allocate(Amat(nkpoints_full,nbands_tot,nbands_tot,nspins))
+      allocate(Amat(nkpoints_full,1:CB_max,1:CB_max,nspins))
+      Amat=0.0d0
+      call vasp_read_BSEFATBAND(kpoint_coords_full,kweights_full,nspins,  &
+     &   Amat,lambda)
+      !
+      ! 
+!      ! BEGIN DEBUG 
+!      open(51,file='AMAT_from_BSE_DENS',status='replace') 
+!      write(51,'("AMAT from BSE_DENS")')
+!      write(51,'(" ... ")')
+!      do ik=1,nkpoints_full !1,size(AMAT,1)
+!       do ib2=CBM,CB_max !1,size(AMAT,3)
+!        do ib1=VB_min,VBM !1,size(AMAT,2)
+!         do ispin=1,nspins !size(AMAT,4)
+!          write(51,'(3F9.5,1F14.7,2I6,F14.6,A5,F14.6)')                   &
+!     &     kpoint_coords_full(ik,1:3),                                    &
+!     &     abs(AMAT(ik,ib1,ib2,ispin))/kweights_full(ik),                 &
+!     &       ib1,ib2,                                                     &
+!     &     REAL(AMAT(ik,ib1,ib2,ispin))," +i* ",                          &
+!     &     AIMAG(AMAT(ik,ib1,ib2,ispin))
+!         end do
+!        end do
+!       end do
+!      end do
+!      close(51)
+!      ! END DEBUG 
+      !
+      ! BEGIN DEBUG
+      !
+      AMATABS=0.0d0
+      do ik=1,size(AMAT,1)
+       !do ib1=1,size(AMAT,2)
+       do ib1=VB_min,VBM
+        !do ib2=1,size(AMAT,3)
+        do ib2=CBM,CB_max
+         do ispin=1,size(AMAT,4)
+          AMATABS=AMATABS+abs(AMAT(ik,ib1,ib2,ispin))**2      
+         end do
+        end do
+       end do
+      end do
+      print '(8x,"sum(|AMAT|**2)=",F20.10)',AMATABS
+       
+      ! END DEBUG
+      !
+      ! end read BSEFATBAND
+      !
+      ! begin calculate density
+      !
+      ! hole: 
+      !
+      allocate(BSE_rho_hole(1:ngx,1:ngy,1:ngz))
+      BSE_rho_hole=0.0d0
+      do ispin=1,nspins
+       !do jk=1,nkpoints_irred
+        do ik=1,nkpoints_full
+         jk=kpoints_table(ik) ! jk: irreducible representative of ik
+         !if (jk.eq.kpoints_table(ik)) then
+          print '(8x,"working on kpoint ",I0)',ik
+          do ib1=VB_min,VBM ! valence bands
+           pfile="PARCHG.0000.0000"
+           if (1.le.ib1.and.ib1.le.9)   write(pfile(11:11),'(I1)') ib1
+           if (10.le.ib1.and.ib1.le.99)   write(pfile(10:11),'(I2)') ib1
+           if (100.le.ib1.and.ib1.le.999)   write(pfile(9:11),'(I3)')ib1
+           if (1000.le.ib1.and.ib1.le.9999) write(pfile(8:11),'(I4)')ib1
+           if (10000.le.ib1) call error_stop('Only up to 9999 bands allo  &
+     &wed')
+           if (1.le.jk.and.jk.le.9)   write(pfile(16:16),'(I1)') jk
+           if (10.le.jk.and.jk.le.99)  write(pfile(15:16),'(I2)') jk
+           if (100.le.jk.and.jk.le.999)  write(pfile(14:16),'(I3)') jk
+           if (1000.le.jk.and.jk.le.9999)  write(pfile(13:16),'(I4)')jk
+           if (10000.le.jk) call error_stop('Only up to 9999 kpoints all  &
+     &owed') 
+           call vasp_read_CHG(pfile,CD,atoms,species,vecs)
+           do ib2=CBM,CB_max ! conduction bands
+            BSE_rho_hole=BSE_rho_hole+(abs(Amat(ik,ib1,ib2,ispin)))**2    &
+     &      *CD
+           end do ! ib2
+          end do ! ib1
+         !end if ! jk.eq.kpoints_table(ik)
+        end do ! ik
+       !end do ! jk
+      end do ! ispin
+      !
+      ! ele:
+      !
+      allocate(BSE_rho_ele(1:ngx,1:ngy,1:ngz))
+      BSE_rho_ele=0.0d0
+      !
+      do ispin=1,nspins
+       !do jk=1,nkpoints_irred
+        do ik=1,nkpoints_full
+         jk=kpoints_table(ik) ! jk: irreducible representative of ik
+         !if (jk.eq.kpoints_table(ik)) then
+          print '(8x,"working on kpoint ",I0)',ik
+          do ib2=CBM,CB_max ! conduction bands
+           pfile="PARCHG.0000.0000"
+           if (1.le.ib2.and.ib2.le.9)  write(pfile(11:11),'(I1)') ib2
+           if (10.le.ib2.and.ib2.le.99)  write(pfile(10:11),'(I2)') ib2
+           if (100.le.ib2.and.ib2.le.999)  write(pfile(9:11),'(I3)') ib2
+           if (1000.le.ib2.and.ib2.le.9999)write(pfile(8:11),'(I4)') ib2
+           if (10000.le.ib2) call error_stop('Only up to 9999 bands allo  &
+     &wed') 
+           if (1.le.jk.and.jk.le.9)    write(pfile(16:16),'(I1)') jk
+           if (10.le.jk.and.jk.le.99)    write(pfile(15:16),'(I2)') jk
+           if (100.le.jk.and.jk.le.999)    write(pfile(14:16),'(I3)') jk
+           if (1000.le.jk.and.jk.le.9999)  write(pfile(13:16),'(I4)') jk
+           if (10000.le.jk) call error_stop('Only up to 9999 kpoints all  &
+     &owed') 
+           call vasp_read_CHG(pfile,CD,atoms,species,vecs)
+           do ib1=VB_min,VBM ! valence bands
+             BSE_rho_ele=BSE_rho_ele+(abs(Amat(ik,ib1,ib2,ispin)))**2*CD
+           end do ! ib1
+          end do ! ib2
+         !end if ! jk.eq.kpoints_table(ik)
+        end do ! ik
+       !end do ! jk
+      end do ! ispin
+      !
+      ! end calculate density
+      
+      ! begin write BSE density
+      !
+      call write_CHG(atoms,species,vecs,'BSE_DENS_E.vasp',                &
+     &     BSE_rho_ele)
+      call write_CHG(atoms,species,vecs,'BSE_DENS_H.vasp',                &
+     &     BSE_rho_hole)
+      deallocate(BSE_rho_ele,BSE_rho_hole)
+      !
+      ! end write BSE densities
+      !
+      !
+      print fsubendext,'vasp_BSE_dens'  
+      return
+      !
+100   close(fileunit)
+      call error_stop('unknown')      
+      !
+      end subroutine vasp_BSE_dens
+!----------------------------------------------------------------------
+
+      subroutine vasp_read_CHG(filename,CD,atoms,species,vecs)  
+      use defs !, only: fsubstart,fsubendext,nerr,atom,element,ferrmssg
+      use readcoords, only : read_poscar
+      use writecoords
+      use misc, only : vecs2vol, ithenearest,cross_product,getspecies
+      !use linalg
+      implicit none
+
+      ! reads VASP CHGCAR or PARCHG or CHG file. 
+      integer i,j,i0
+      !integer, intent(in) :: avdir,cutdir
+      !double precision :: cutpos
+      character*1024 :: line,filename
+      character*24 FORMA
+      double precision :: vecs(1:3,1:3),vol,area
+      double precision pos(3),posfrac(1:3)
+      double precision, allocatable :: CD(:,:,:),abspos(:,:,:,:),         &
+     &                          fracpos(:,:,:,:),CDav(:),MCD(:,:,:)
+      type(atom), allocatable :: atoms(:)
+      type(element), allocatable :: species(:)
+      integer natoms, nspecies,ngxf,ngyf,ngzf ! grid point numbers
+      integer ix,iy,iz
+      !
+      print fsubstart,'vasp_read_CHG'  
+      !
+      ! read coordinates, cell vectors, ... from header of CHGCAR.
+      ! get cell volume to scale CD
+      print '(8x,"Reading file ",A)',adjustl(trim(adjustl(filename)))
+      if (allocated(atoms)) deallocate(atoms)
+      if (allocated(species)) deallocate(species)
+      call read_poscar(filename,atoms,natoms,species,nspecies,
+     &           vecs)
+      call vecs2vol(vecs,vol)
+      call getspecies(atoms, species)
+      print '(8x,"Cell volume (Angs³): ",F12.6)',vol
+      !
+      !
+      ! begin read charge density and positions
+      !
+      open(51,file=filename,status='old', err=100)  
+      rewind(51)
+      read(51,'(A1024)', end=101,err=101) line
+      do while (line.ne.'')
+        read(51,'(A1024)', end=101,err=101) line
+      end do
+      read(51,*) ngxf,ngyf,ngzf
+      print '(8x,"NGXF, NGYF, NGZF: ",3(I0,", "))', ngxf,ngyf,ngzf
+      if (allocated(CD)) deallocate(CD)
+      if (allocated(MCD)) deallocate(MCD)
+      if (allocated(abspos)) deallocate(abspos)
+      if (allocated(fracpos)) deallocate(fracpos)
+      allocate(CD(ngxf,ngyf,ngzf),MCD(ngxf,ngyf,ngzf))
+      allocate(abspos(ngxf,ngyf,ngzf,1:3))
+      allocate(fracpos(ngxf,ngyf,ngzf,1:3))
+      read(51,*) (((CD(iX,iY,iZ),iX=1,NGXF),iY=1,NGYF),iZ=1,NGZF) ! Charge density
+      print '(8x,"Charge density read.")'
+      !
+      read(51,*,err=104,end=104) ngxf,ngyf,ngzf
+      print '(8x,"NGXF, NGYF, NGZF: ",3(I0,", "))', ngxf,ngyf,ngzf
+      read(51,*,end=104,err=104)(((MCD(iX,iY,iZ),iX=1,NGXF),iY=1,         &
+     &      NGYF),iZ=1,NGZF) ! Magnetization charge density
+      print '(8x,"Magnetization charge density read.")'
+      close(51)
+      !
+      !
+104   continue    
+      close(51)
+      close(52)
+      nwarn=nwarn+1
+      print fwarn,'cannot read mag. density. Ok for PARCHG or ISPIN=1'
+      deallocate(MCD)
+      !
+105   continue 
+      !     
+      do ix=1,ngxf
+       do iy=1,ngyf
+        do iz=1,ngzf
+         abspos(ix,iy,iz,1)=dble(mod(ix,ngxf))/dble(ngxf)*vecs(1,1)       &
+     &                     +dble(mod(iy,ngyf))/dble(ngyf)*vecs(2,1)       &
+     6                     +dble(mod(iz,ngzf))/dble(ngzf)*vecs(3,1)   
+         abspos(ix,iy,iz,2)=dble(mod(ix,ngxf))/dble(ngxf)*vecs(1,2)       &
+     &                     +dble(mod(iy,ngyf))/dble(ngyf)*vecs(2,2)       &
+     &                     +dble(mod(iz,ngzf))/dble(ngzf)*vecs(3,2)
+         abspos(ix,iy,iz,3)=dble(mod(ix,ngxf))/dble(ngxf)*vecs(1,3)       &
+     &                     +dble(mod(iy,ngyf))/dble(ngyf)*vecs(2,3)       &
+     &                     +dble(mod(iz,ngzf))/dble(ngzf)*vecs(3,3)
+         fracpos(ix,iy,iz,1:3)=(/dble(mod(ix,ngxf))/dble(ngxf),           &
+     &                           dble(mod(iy,ngyf))/dble(ngyf),           &
+     &                           dble(mod(iz,ngzf))/dble(ngzf)/)
+        end do ! igzf
+       end do ! igyf
+      end do ! igxf
+      !
+      ! end read charge density and positions
+      !
+      !
+      print fsubendext,'vasp_read_CHG'  
+      return
+      !
+100   continue    
+      close(51)
+      if(allocated(CD)) deallocate(CD)
+      deallocate(MCD)
+      nerr=nerr+1
+      print ferrmssg,'CHGCAR file not found'
+      return
+      !
+101   continue    
+      close(51)
+      deallocate(CD)
+      deallocate(MCD)
+      nerr=nerr+1
+      print ferrmssg,'something wrong with CHGCAR file...'
+      return
+      !
+       
+      end subroutine vasp_read_CHG
+
+c---------------------------------------------------------------------------
+
+      subroutine write_CHG(atoms,species,vecs,filename,CD)      
+      !
+      ! writes a file with CHGCAR, PARCHG format
+      !
+      use defs
+      use writecoords
+      use misc, only: getspecies
+      implicit none
+      character(*), intent(in) :: filename
+      double precision, intent(in) :: CD(:,:,:)
+      integer iX,iY,iZ,ngxf,ngyf,ngzf
+      type(atom), intent(in) :: atoms(:)
+      type(element), allocatable :: species(:)
+      double precision, intent(in) :: vecs(3,3)
+      integer natoms,nspecies
+      character*24 FORMA
+      !
+      print fsubstart,'write_CHG'
+      ngxf=size(CD,1)
+      ngyf=size(CD,2)
+      ngzf=size(CD,3)
+      natoms=size(atoms)
+      nspecies=size(species)
+      call getspecies(atoms,species) 
+      call write_coords(filename,'poscar',atoms,natoms,                   &
+     &                  species,nspecies,vecs)
+      open(52,file=filename,status='old',position='append',err=100) 
+      write(52,'(" ")')
+      write(52,'(3I5)') ngxf,ngyf,ngzf
+      FORMA='(10(1X,G11.5))'
+      write(52,FORMA) (((CD(iX,iY,iZ),iX=1,NGXF),                         &
+     &     iY=1,NGYF),iZ=1,NGZF) 
+      close(52)
+      print fsubendext,'write_CHG'
+      return
+
+100   close(52)
+      nerr=nerr+1
+      call error_stop('cannot write charge density')
+
+      end subroutine write_CHG
+
+c---------------------------------------------------------------------
+
+      subroutine vasp_read_BSEFATBAND(kpoints,kweights,nspins,Amat,       &
+     &lambda)
+      ! reads Amat from BSEFATBAND for eigenvalue no. lambda
+      use defs, only: fsubstart, fsubendext, error_stop,nerr
+      implicit none
+      complex,allocatable :: Amat(:,:,:,:)
+      integer lambda
+      character*1024 line
+      character*24 chardum
+      integer size_R,NBSEEIG,nkpoints,ikpoint,vband,cband,iread,ispin
+      integer nspins,jkpoint,CB_max,VB_min,VBM,CBM
+      double precision BSEEIG,IPEIG,VEIG0,CEIG0,AMAT1,AMAT2,AMATABS
+      double precision kpoint_old(1:3),kpoint(1:3)
+      double precision, allocatable :: kpoints(:,:),kweights(:)
+      double precision, allocatable :: VEIG(:,:,:),CEIG(:,:,:)
+      double precision kdist,kdist2
+      logical all_k_read
+
+      
+      print(fsubstart),'vasp_read_BSEFATBAND'
+      open(51,file='BSEFATBAND')
+      rewind(51)
+      read(51,*) size_R,NBSEEIG
+      print '(8x,"DIM(BSE)=",I0,", NBSEEIGS=",I0)',size_R,NBSEEIG ! DEBUG
+      do iread=1,(lambda-1)*(size_R+1)
+        read(51,'(A1024)',end=100,err=100) line
+      end do
+      read(51,'(A1024)') line
+      read(line(index(line,"BSE eigenvalue")+14:),*) BSEEIG
+      read(line(index(line,"IP-eigenvalue:")+14:),*) IPEIG
+!      print '(8x,"BSE EIGVAL=",F20.10," eV, IP EIGVAL=",F20.10)',         &
+!     &  BSEEIG,IPEIG ! DEBUG
+!      ikpoint=1
+      ispin=1
+      nspins=size(AMAT,4)
+      nkpoints=size(kpoints,1)
+      CB_max=size(AMAT,2)
+      allocate(VEIG(nkpoints,CB_max,ispin))
+      allocate(CEIG(nkpoints,CB_max,ispin))
+      all_k_read=.false.
+      CBM=CB_max
+      VBM=1
+      VB_min=CB_max
+      do iread=1,size_R
+        read(51,*,end=100,err=100)        kpoint(1:3),VEIG0,CEIG0,        &
+     &    AMATABS,vband,cband,AMAT1,chardum, AMAT2
+        if (vband.lt.VB_min) VB_min=vband 
+        if (vband.gt.VBM) VBM=vband 
+        if (cband.lt.CBM) CBM=cband 
+        ikpoint=0
+        do jkpoint=1,nkpoints
+          kdist=norm2(kpoint(1:3)-kpoints(jkpoint,1:3))
+          if(kdist.le.1D-5) ikpoint=jkpoint
+        end do
+        if (all_k_read.and.ikpoint==1) ispin=2
+        if (ikpoint.eq.nkpoints) all_k_read=.true.
+        AMAT(ikpoint,vband,cband,ispin)=COMPLEX(AMAT1,AMAT2)
+        VEIG(ikpoint,vband,ispin)=VEIG0
+        CEIG(ikpoint,cband,ispin)=CEIG0
+!        ! BEGIN DEBUG
+!        print*, kpoint(1:3),VEIG(ikpoint,vband,ispin),CEIG(ikpoint,       &
+!     &   cband,ispin), AMATABS,vband,cband,AMAT1,                         &
+!     &     chardum, AMAT2, AMAT(ikpoint,vband,cband,ispin),ispin
+!        ! END DEBUG
+      end do ! iread
+      close(51)
+      print '(8x,"ispin=",I0)',ispin ! DEBUG
+      print '(8x,"all_k_read=",L1)',all_k_read ! DEBUG
+      ! 
+      ! BEGIN DEBUG 
+      ! 
+      AMATABS=0.0d0
+      do ikpoint=1,size(AMAT,1)
+       do vband=1,size(AMAT,2)
+        do cband=1,size(AMAT,3)
+         do ispin=1,size(AMAT,4)
+          AMATABS=AMATABS+abs(AMAT(ikpoint,vband,cband,ispin))**2      
+         end do
+        end do
+       end do
+      end do
+      print '(8x,"sum(|AMAT|**2)=",F20.10)',AMATABS 
+      ! 
+      ! END DEBUG 
+      ! 
+      !
+!      ! BEGIN DEBUG 
+!      open(51,file='AMAT_from_read_BSEFATBAND',status='replace') 
+!      write(51,'("AMAT from read_BSEFATBANDS")')
+!      write(51,'(" ... ")')
+!      do ikpoint=1,nkpoints !1,size(AMAT,1)
+!       do cband=CBM,CB_max !1,size(AMAT,3)
+!        do vband=VB_min,VBM !1,size(AMAT,2)
+!         do ispin=1,nspins !size(AMAT,4)
+!          write(51,'(3F9.5,3F14.7,2I6,F14.6,A5,F14.6)') kpoints(ikpoint,  &
+!     &     1:3),VEIG(ikpoint,vband,ispin),CEIG(ikpoint,cband,ispin),      &
+!     &     abs(AMAT(ikpoint,vband,cband,ispin))/kweights(ikpoint),        &
+!     &       vband,cband,                                                 &
+!     &     REAL(AMAT(ikpoint,vband,cband,ispin))," +i* ",                 &
+!     &     AIMAG(AMAT(ikpoint,vband,cband,ispin))
+!         end do
+!        end do
+!       end do
+!      end do
+!      close(51)
+!      ! END DEBUG 
+
+      return
+
+100   nerr=nerr+1
+      close(51)
+      call error_stop('problem with reading BSEFATBAND')
+
+      end subroutine vasp_read_BSEFATBAND
 
 c---------------------------------------------------------------------
 
@@ -8995,7 +10902,9 @@ c---------------------------------------------------------------------
       !
 20    continue
       close(fileunit)
-      print '(8x,"E_Fermi=",A1)',lnoncollinear
+      print '(8x,"LNONCOLLINEAR=",L1)',lnoncollinear
+      !if (lnoncollinear) print '(8x,"LNONCOLLINEAR=TRUE")' ! DEBUG
+      !if (.not.lnoncollinear) print '(8x,"LNONCOLLINEAR=FALSE")'   ! DEBUG
       print fsubendext,"vasp_read_lnoncollinear"
       return
 
@@ -9004,6 +10913,251 @@ c---------------------------------------------------------------------
       call error_stop("problem with OUTCAR") 
       
       end subroutine vasp_read_lnoncollinear
+
+!------------------------------------------------------------------
+
+      subroutine vasp_read_OUTCAR_string(string,stringval)
+      !
+      use defs, only : error_stop,fsubstart,fsubendext
+      implicit none
+
+      integer fileunit
+      logical file_is_open,found
+      character(len=1024) line
+      character(*), intent(in) :: string
+      character*24 stringval
+      integer iread
+      !
+      print fsubstart,"vasp_read_OUTCAR_string"
+      !
+      ! begin read F
+      !
+      print '(8x,"string:",A24)',adjustl(trim(adjustl(string)))
+      found=.FALSE.
+      fileunit=51
+      INQUIRE (unit=fileunit, opened=file_is_open)
+      do while (file_is_open)
+        fileunit=fileunit+1
+        INQUIRE (unit=fileunit, opened=file_is_open)
+      end do
+      ! print '(8x,"file unit=",I0)',fileunit ! DEBUG
+      open(fileunit,file="OUTCAR",status='old', err=21)
+      rewind(fileunit)
+      ! print*, "OUTCAR opened" ! DEBUG
+10    read(fileunit,'(A1024)',err=21,end=20) line
+      if(index(line,string).gt.0.and.index(line,"=").gt.0) then
+         ! print*,line ! DEBUG
+         iread=index(line,string)+len_trim(string)
+         !print*, line(iread:iread) ! DEBUG
+         do while (line(iread:iread).eq.' ')
+           iread=iread+1
+           !print*, line(iread:iread) ! DEBUG
+           !print*,iread ! DEBUG
+         end do
+         do while (line(iread:iread).eq.'=') 
+           iread=iread+1
+           !print*,iread ! DEBUG
+           !print*, line(iread:iread) ! DEBUG
+         end do
+        read(line(iread:),*) stringval 
+        print '(8x,"stringval:",A24)',adjustl(stringval) !DEBUG
+        found=.true.
+        goto 20
+      end if
+      goto 10
+      !
+20    continue
+      close(fileunit)
+      if (.not.found) call error_stop("string not found")
+
+      !if (found) print '(8x,A56,"=",A24)',string,stringval
+      print fsubendext,"vasp_read_OUTCAR_string"
+      return
+
+21    continue
+      close(fileunit)
+      call error_stop("problem with OUTCAR") 
+      
+      end subroutine vasp_read_OUTCAR_string
+
+!------------------------------------------------------------------
+
+      subroutine vasp_read_IBZKPT(kpoint_coords,kweights)
+      !
+      use defs, only : error_stop,fsubstart,fsubendext
+      implicit none
+
+      integer fileunit
+      logical file_is_open
+      character(len=256) line
+      integer nkpoints,ikpoint
+      double precision, allocatable :: kpoint_coords(:,:),kweights(:) 
+      !
+      print fsubstart,"vasp_read_IBZKPT"
+      !
+      ! begin read F
+      !
+      fileunit=51
+      INQUIRE (unit=fileunit, opened=file_is_open)
+      do while (file_is_open)
+        fileunit=fileunit+1
+        INQUIRE (unit=fileunit, opened=file_is_open)
+      end do
+      ! print '(8x,"file unit=",I0)',fileunit ! DEBUG
+      open(fileunit,file="IBZKPT",status='old', err=21)
+      rewind(fileunit)
+      read(fileunit,'(A256)',err=21,end=21) line ! header
+      ! DEBUG
+      ! print*,line
+      ! END DEBUG
+      read(fileunit,*,err=21,end=21) nkpoints ! nkpoints
+      ! print '(8x,"Found ",I0," kpoints")', nkpoints ! DEBUG
+      read(fileunit,'(A256)',err=21,end=21) line ! header
+      ! DEBUG
+      ! print*,line
+      ! END DEBUG
+      allocate(kpoint_coords(nkpoints,3),kweights(nkpoints))
+      do ikpoint=1,nkpoints
+        read(fileunit,*,err=21,end=21) kpoint_coords(ikpoint,1:3),        &
+     &   kweights(ikpoint)
+        ! DEBUG
+        ! print*, kpoint_coords(ikpoint,:),kweights(ikpoint)
+        ! END DEBUG
+      end do
+      
+      !
+20    continue
+      close(fileunit)
+
+      print fsubendext,"vasp_read_IBZKPT"
+      return
+
+21    continue
+      close(fileunit)
+      call error_stop("problem with IBZKPT") 
+      
+      end subroutine vasp_read_IBZKPT
+
+!------------------------------------------------------------------
+
+      subroutine vasp_read_kpoints_table(kpoints,kweights,                &
+     &  kpoints_table)
+      !
+      use defs, only : error_stop,fsubstart,fsubendext
+      implicit none
+
+      integer fileunit
+      integer, allocatable :: kpoints_table(:)
+      logical file_is_open
+      character(len=256) line
+      character(len=256) chardum
+      integer nkpoints_full,ikpoint
+      double precision, allocatable :: kpoints(:,:),kweights(:)
+      double precision fdum
+      !
+      print fsubstart,"vasp_read_kpoints_table"
+      !
+      ! begin read F
+      !
+      call vasp_read_OUTCAR_string('NKDIM',chardum)
+      read(chardum,*) nkpoints_full
+      if (allocated(kweights)) deallocate(kweights)
+      if (allocated(kpoints)) deallocate(kweights)
+      allocate(kpoints_table(nkpoints_full))
+      allocate(kpoints(nkpoints_full,1:3))
+      allocate(kweights(nkpoints_full))
+      fileunit=51
+      INQUIRE (unit=fileunit, opened=file_is_open)
+      do while (file_is_open)
+        fileunit=fileunit+1
+        INQUIRE (unit=fileunit, opened=file_is_open)
+      end do
+      print '(8x,"file unit=",I0)',fileunit
+      open(fileunit,file="OUTCAR",status='old', err=100)
+      rewind(fileunit)
+10    read(fileunit,'(A256)',end=100,err=100) line      
+      if(index(line,                                                      &
+     &  'k-points will be used (e.g. in the exchange kernel)').gt.0)      &
+     & then
+         read(fileunit,'(A256)') line ! header
+         do ikpoint=1,nkpoints_full
+           read(fileunit,*,end=100,err=100) kpoints(ikpoint,1:3),         &
+     &     kweights(ikpoint), kpoints_table(ikpoint)
+         end do
+         goto 20
+      end if
+      goto 10
+      !
+20    continue
+      close(fileunit)
+
+      print fsubendext,"vasp_read_kpoints_table"
+      return
+
+100   continue
+      close(fileunit)
+      call error_stop("problem with OUTCAR") 
+      
+      end subroutine vasp_read_kpoints_table
+
+!------------------------------------------------------------------
+
+      subroutine vasp_read_kpoints_irred(kpoint_coords,kweights)
+      !
+      use defs, only : error_stop,fsubstart,fsubendext
+      implicit none
+
+      integer fileunit
+      logical file_is_open
+      character(len=256) line
+      character(len=256) chardum
+      integer nkpoints,ikpoint
+      double precision, allocatable :: kpoint_coords(:,:),kweights(:) 
+      double precision fdum
+      !
+      print fsubstart,"vasp_read_kpoints_irred"
+      !
+      ! begin read F
+      !
+      call vasp_read_OUTCAR_string('NKPTS',chardum)
+      read(chardum,*) nkpoints
+      print '(8x,I0," irred. kpoints")',nkpoints
+      if (allocated(kpoint_coords)) deallocate(kpoint_coords)
+      if (allocated(kweights)) deallocate(kweights)
+      allocate(kpoint_coords(nkpoints,1:3),kweights(nkpoints))
+      fileunit=51
+      INQUIRE (unit=fileunit, opened=file_is_open)
+      do while (file_is_open)
+        fileunit=fileunit+1
+        INQUIRE (unit=fileunit, opened=file_is_open)
+      end do
+      print '(8x,"file unit=",I0)',fileunit
+      open(fileunit,file="OUTCAR",status='old', err=100)
+      rewind(fileunit)
+10    read(fileunit,'(A256)',end=100,err=100) line      
+      if(index(line,'irreducible k-points:').gt.0) then
+         read(fileunit,'(A256)') line ! header
+         read(fileunit,'(A256)') line ! header
+         read(fileunit,'(A256)') line ! header
+         do ikpoint=1,nkpoints
+           read(fileunit,*,end=100,err=100) kpoint_coords(ikpoint,:),     &
+     &     kweights(ikpoint)
+         end do
+         goto 20
+      end if
+      goto 10
+      !
+20    continue
+      close(fileunit)
+
+      print fsubendext,"vasp_read_kpoints_irred"
+      return
+
+100   continue
+      close(fileunit)
+      call error_stop("problem with OUTCAR") 
+      
+      end subroutine vasp_read_kpoints_irred
 
 !-------------------------------------------------------------------      
 

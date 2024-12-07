@@ -3048,7 +3048,8 @@ c---------------------------------------------------------------------
      &     .gt.0) triplets=.true. 
         if(index(line,'Unrestricted').gt.0) triplets=.true. 
         if(index(line,'No. of roots :').gt.0) then
-          read(line(29:34),*) nroots
+          !read(line(29:34),*) nroots
+          read(line(index(line,':')+1:),*) nroots
           if (.not. allocated(exens))allocate(exens(nroots),
      &       exent(nroots),oscis(nroots),oscit(nroots),tmom(nroots,3))
           exens=0.0D0
@@ -3077,7 +3078,8 @@ c---------------------------------------------------------------------
      &          tmom(iroot,2),chardum,tmom(iroot,3)
             end if
             if(index(line,'Dipole Oscillator Strength').gt.0) then
-              read(line(54:64),*) oscis(iroot)
+              !read(line(54:64),*) oscis(iroot)
+              read(line(index(line,'Strength')+9:),*) oscis(iroot)
               iroot=iroot+1 
             end if
           end do
@@ -3622,19 +3624,22 @@ c-------------------------------------------------------------------------------
       do igrid1=1,dimgrid
         sumorig=sumorig+val(igrid1)
       end do
-      print '(8x,"Sum over original distr.:",F15.5)',sumorig
+      !print '(8x,"Sum over original distr.:",F15.5)',sumorig
+      print '(8x,"Sum over original distr.:",E15.6E3)',sumorig
       intorig=0.0D0
       do igrid1=1,dimgrid-1
         intorig=intorig+val(igrid1)*(grid(igrid1+1)-grid(igrid1))
       end do
       intorig=intorig+val(dimgrid)*(grid(dimgrid)-grid(dimgrid-1))
-      print '(8x,"Integ. over original distr.:",F15.5)',intorig
+      !print '(8x,"Integ. over original distr.:",F15.5)',intorig
+      print '(8x,"Integ. over original distr.:",E15.6E3)',intorig
       intbrd=0.0D0
       do igrid1=1,dimgrid-1
         intbrd=intbrd+brdval(igrid1)*(grid(igrid1+1)-grid(igrid1))
       end do
       intbrd=intbrd+brdval(dimgrid)*(grid(dimgrid)-grid(dimgrid-1))
-      print '(8x,"Integ. over broadened distr.:",F15.5)',intbrd
+      !print '(8x,"Integ. over broadened distr.:",F15.5)',intbrd
+      print '(8x,"Integ. over broadened distr.:",E15.6E3)',intbrd
       if (continuous) brdval=brdval*intorig/intbrd
       print fsubendext,'broaden'
       return
@@ -3899,7 +3904,8 @@ c---------------------------------------------------------------------
 !     &       broadened_dist(idataline)
 !      end do
       do i=1,size(equix)
-        write(51,'(2(F20.10,5x))') equix(i),broadened_dist(i)
+        !write(51,'(2(F20.10,5x))') equix(i),broadened_dist(i)
+        write(51,'(F20.10,5x,E15.6E3,5x)') equix(i),broadened_dist(i)
       end do ! i
       !  
       close(51)
@@ -4364,14 +4370,14 @@ c---------------------------------------------------------------------
       double precision, allocatable :: occups_up(:,:),occups_down(:,:)
       double precision magmom
       integer nkpoints,ikpoint,ikpoint_down
-      integer nbands,nbands_printed,ibandup,ibanddown
+      integer nbands,nbands_printed,ibandup,ibanddown,nbandsgwlow
       integer nelect
       double precision max_nele_k_up,min_nele_k_up
       double precision max_nele_k_down,min_nele_k_down
       double precision fdum
       integer idum,len_trim_line
       character line*256
-      logical spinpol,spinorbit,read_k,qpgw
+      logical spinpol,spinorbit,read_k,qpgw,evgw
 
       print fsubstart, "bandgap"
 
@@ -4798,6 +4804,8 @@ c---------------------------------------------------------------------
       case ("vasp_gw","VASP_GW","outcar_gw","OUTCAR_GW")
         spinpol=.false.
         qpgw=.false.
+        evgw=.false.
+        nbandsgwlow=1
         open(51,file=infile,status='old',err=101)
         read_k=.true.
 28      read(51,'(A256)',end=34,err=102) line
@@ -4828,11 +4836,21 @@ c---------------------------------------------------------------------
         !  
         ! end read number of electrons
         !
-        ! begin check if QPGW
+        ! begin read lowest GW band
+        !
+        if(index(line,"NBANDSGWLOW").gt.0) then
+          read(line(index(line,'=')+1:),*) nbandsgwlow
+          print '(8x,I0,x," is the 1st GW band.")',nbandsgwlow
+        end if
+        !  
+        ! end read lowest GW band
+        !
+        ! begin check if QPGW/EVGW
         !
         if (index(line,'QPGW').gt.0) qpgw=.true.
+        if (index(line,'EVGW').gt.0) evgw=.true.
         !
-        ! end check if QPGW
+        ! end check if QPGW/EVGW
         !
         ! begin read magnetization
         !
@@ -4889,7 +4907,8 @@ c---------------------------------------------------------------------
         goto 28
         !
 30      read(51,'(A256)',end=34,err=201) line
-        if (index(line,'spin component 1').gt.0.and..not.qpgw) then
+        if (index(line,'spin component 1').gt.0.and..not.qpgw             &
+     &     .and..not.evgw) then
           ! BEGIN DEBUG
           print '(8x,"going to read spin 1 eigenvalues")'
           ! END DEBUG
@@ -4927,7 +4946,8 @@ c---------------------------------------------------------------------
           if (.not.spinpol) call print_gap_info()
           if (.not.spinpol) goto 30
         end if  ! (index(line,'spin component 1').gt.0)
-        if (index(line,'spin component 2').gt.0.and..not.qpgw) then
+        if (index(line,'spin component 2').gt.0.and..not.qpgw             &
+     &     .and..not.evgw) then
           ! BEGIN DEBUG
           print '(8x,"going to read spin 2 eigenvalues")'
           ! END DEBUG
@@ -5072,6 +5092,118 @@ c---------------------------------------------------------------------
         !
         ! end get eigenvalues of QPGW
         !  
+        ! begin get eigenvalues of EVGW
+        !  
+        if (evgw.and.index(line,'QP shifts').gt.0.and.index(line,'iter')  &
+     &     .gt.0) then
+          bandeminup=1.0d6
+          bandemaxup=-1.0d6
+          !read(line(index('iteration')+9:),*) iter
+          ! BEGIN DEBUG
+          ! print*,line
+          !print '(8x,"going to read spin 1 EVGW eigenvalues")'
+          ! END DEBUG
+          read(51,'(A256)') line
+          ! print*,line
+          if (index(line,'for sc-GW calculations column').gt.0) then
+            read(51,'(A256)') line
+            !print*,line
+            read(51,'(A256)') line
+            !print*,line
+          end if
+          ! BEGIN DEBUG
+          !print*,line
+          ! END DEBUG
+          !read(51,'(A256)') line
+          ! BEGIN DEBUG
+          !print*,line
+          ! END DEBUG
+          do ikpoint=1,nkpoints
+            read(51,'(A256)') line
+            !print*,line
+            read(51,'(A256)') line
+            !print*,line
+            read(51,'(A256)') line
+            !print*,line
+            line='not empty'
+            len_trim_line=len_trim(line)
+            ! read EV for all bands for this kpoint:
+            do while (len_trim_line.gt.1)
+              read(51,'(A256)') line
+              len_trim_line=len_trim(line)
+              ! BGEIN DEBUG
+              !print*,line
+              ! END DEBUG
+              ! read band No.  KS-energies  QP-energies   sigma(KS)   V_xc(KS)     V^pw_x(r,r')   Z            occupation Imag(sigma)
+              if(len_trim_line.gt.1) read(line,*) ibandup,fdum, energy,   &
+     &            fdum,      fdum, fdum, fdum, occ
+              if (energy.gt.bandemaxup(ibandup)) bandemaxup(ibandup)      &
+     &                =energy
+              if (energy.lt.bandeminup(ibandup)) bandeminup(ibandup)      &
+     &                =energy
+              levels_up(ikpoint,ibandup)=energy
+              occups_up(ikpoint,ibandup)=occ
+            end do ! while len_trim_line.gt.1
+            !read(51,'(A256)') line
+            ! BEGIN DEBUG
+            print '(8x,"kpoint, 1st and last QP EV:",1x,I0,1x,F12.6,1x,   &
+     &        F12.6)', ikpoint,levels_up(ikpoint,1),                      &
+     &        levels_up(ikpoint,ibandup)
+            ! END DEBUG
+          end do ! ikpoint
+          nbands_printed=ibandup ! Not all bands are printed
+          ! BEGIN DEBUG
+          print '(8x,"spin 1 QPGW eigenvalues read")'
+          print '(8x,"1st and last QP EV:",1x,F12.6,1x,F12.6)',           &
+     &     levels_up(1,1),levels_up(nkpoints,ibandup)
+          ! END DEBUG
+          if (.not.spinpol) call print_gap_info()
+          if (.not.spinpol) goto 30
+          if (spinpol) then
+            bandemindown=1.0d6
+            bandemaxdown=-1.0d6
+            ! BEGIN DEBUG
+            print '(8x,"going to read spin 2 QPGW eigenvalues")'
+            ! END DEBUG
+            do ikpoint=1,nkpoints
+              read(51,'(A256)') line
+              read(51,'(A256)') line
+              read(51,'(A256)') line
+              line='not empty'
+              len_trim_line=len_trim(line)
+              ! read EV for all bands for this kpoint:
+              do while (len_trim_line.gt.1)
+                read(51,'(A256)') line
+                len_trim_line=len_trim(line)
+              ! read band No.  KS-energies  QP-energies   sigma(KS)   V_xc(KS)     V^pw_x(r,r')   Z            occupation Imag(sigma)
+              if(len_trim_line.gt.1) read(line,*) ibanddown,fdum,         &
+     &          energy, fdum, fdum, fdum, fdum, occ
+                if (energy.gt.bandemaxdown(ibanddown))                    &
+     &              bandemaxdown(ibanddown)=energy
+                if (energy.lt.bandemindown(ibanddown))                    &
+     &              bandemindown(ibanddown)=energy
+                levels_down(ikpoint,ibanddown)=energy
+                occups_down(ikpoint,ibanddown)=occ
+              end do ! while len_trim_line.gt.1
+              read(51,'(A256)') line
+              ! BEGIN DEBUG
+              print '(8x,"kpoint, 1st and last QP EV:",1x,I0,1x,F12.6,    &
+     &          1x,F12.6)', ikpoint,levels_down(ikpoint,1),               &
+     &          levels_down(ikpoint,ibanddown)
+              ! BEGIN DEBUG
+            end do ! ikpoint
+            nbands_printed=ibanddown ! Not all bands are printed
+            ! BEGIN DEBUG
+            print '(8x,"spin 2 EVGW eigenvalues read")'
+            print '(8x,"1st and last QP EV:",1x,F12.6,1x,F12.6)',         &
+     &       levels_down(1,1),levels_down(nkpoints,ibanddown)
+            ! END DEBUG
+            call print_gap_info()
+          end if !(spinpol)
+        end if ! (evgw.and.index(line,'QP shifts...).gt.0)  
+        !
+        ! end get eigenvalues of EVGW
+        !  
         if(index(line,"-------------------------------").gt.0) goto 30
         if(index(line,"General timing and accounting").gt.0) goto 34
         goto 30
@@ -5198,6 +5330,7 @@ c---------------------------------------------------------------------
          if (.not.spinpol.and.(sum(occups_up(ikpoint,1:nbands_printed))   &
      &       .lt.nelect-0.5d0*occtol.or.sum(occups_up(ikpoint,            &
      &       1:nbands_printed)).gt.nelect+0.5d0*occtol)) then
+           print'(8x,"nonspinpol. metal")'
            gapa=0.0d0
            homoa=efermi
            lumoa=efermi
@@ -5209,6 +5342,7 @@ c---------------------------------------------------------------------
          end if
          if (spinpol.and.max_nele_k_up-min_nele_k_up.gt.                  &
      &       0.5d0*occtol) then
+           print'(8x,"metal for spin up")'
            gapa=0.0d0
            homoa=efermi
            lumoa=efermi
@@ -5220,6 +5354,7 @@ c---------------------------------------------------------------------
          end if
          if (spinpol.and.min_nele_k_down.lt.max_nele_k_down-0.5d0         &
      &       *occtol) then
+           print'(8x,"metal for spin down")'
            gapb=0.0d0
            homob=efermi
            lumob=efermi

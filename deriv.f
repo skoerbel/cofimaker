@@ -201,7 +201,8 @@
       write(file1a,'(a,a)') adjustl(trim(file1)),".integ" 
       open(51,file=trim(file1a),status="replace")
       do idata=1,ndata
-        write(51,'(F10.6,F15.6)') rgrid(idata),field_integ(idata)       
+        !write(51,'(F10.6,F15.6)') rgrid(idata),field_integ(idata)       
+        write(51,'(E18.3,E18.3)') rgrid(idata),field_integ(idata)  
       end do 
       close(51)
       ! end write integ. to disk 

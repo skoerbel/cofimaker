@@ -140,13 +140,16 @@
       double precision pi,bohr,polfac_Angs_e,ec,Ryd,hartree,kcalpermole
       parameter(pi=acos(-1.0D0),bohr=0.52917721092D0,
      & Ryd=13.60569253D0,hartree=2.0D0*Ryd,kcalpermole=0.043d0)
-      parameter(ec=1.60217648740E-19)
-      double precision, parameter :: em=9.1093829140E-31
-      double precision, parameter :: hbar=1.054571726E-34     
-      parameter(polfac_Angs_e=1.60217656535E3)
-      double precision, parameter :: Angstrom=1.0E-10,  
-     &     epsilon0=8.8541878170E-12   ! vacuum permittivity
+      parameter(ec=1.60217648740D-19) ! electron charge
+      double precision, parameter :: em=9.1093829140D-31 ! electron mass
+      double precision, parameter :: hbar=1.054571726D-34     
+      parameter(polfac_Angs_e=1.60217656535D3)
+      double precision, parameter :: Angstrom=1.0D-10,  
+     &     epsilon0=8.8541878170D-12   ! vacuum permittivity
       double precision, parameter:: c_light=299792458.0d0
+      double precision, parameter :: k_B=1.38064852D-23 ! m2 kg s-2 K-1, Boltzmann's constant
+      double precision, parameter :: one_nm=1.0D-9 ! 1 nm=10⁻⁹ m
+      double precision, parameter :: one_cm=1.0D-2 ! 1 cm=10⁻² m
 
       ! special types and defs. for subroutine crysanpero
       double precision cornerweight,centerweight,faceweight

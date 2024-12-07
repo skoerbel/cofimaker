@@ -220,8 +220,16 @@ c---------------------------------------------------------------------
                    read(charac,*) allomat1(j,k)
                  end do ! k=cartesian coordinate 
                end do ! j=atom number
+               ! optional: absolute coordinates requested (default is
+               ! fractional)
+               charac="frac"
+               if (i+1.le.command_argument_count()) then
+                 i=i+1
+                 call get_command_argument(i,charac)
+                 !print '(8x,"abs or frac coords: ",A5)', charac
+               end if
                call add_atoms(infile,informat,thespecies,thenumber,
-     &              allomat1,outfile)
+     &              allomat1,outfile,charac)
          case("--addeqv")
                ! add atoms to a set of irreducible atoms by applying
                ! symmetries read from a file 
@@ -678,6 +686,18 @@ c---------------------------------------------------------------------
               else
                write(51,*) atoms(iatom)%name,atoms(iatom)%coord         
               end if
+             end if
+            end do ! iatom
+            close(51)
+            ! print neighbor list
+            open(51,file="NEIGHBOR_LIST",status='replace')
+            do iatom=1,size(atoms)
+             if (1.le.atoms(iatom)%coord) then
+              write(51,*) iatom, atoms(iatom)%name,atoms(iatom)%coord,    &
+     &         (atoms(iatom)%ineighbors(j)," ",j=1,atoms(iatom)%coord),   &
+     &         (atoms(iatom)%neighbors(j),' ',j=1,atoms(iatom)%coord)
+             else
+               write(51,*) atoms(iatom)%name,atoms(iatom)%coord
              end if
             end do ! iatom
             close(51)
@@ -2141,6 +2161,40 @@ c---------------------------------------------------------------------
      &            ' will be merged with file',trim(filename2),'.'
             call mergefiles(filename1,format1,filename2,format2,
      &            filename3,format3)
+         case("--molecule")
+            ! detect atoms that form a molecule
+            i=i+1
+            call get_command_argument(i,infile) ! filename
+            i=i+1
+            call get_command_argument(i,informat) ! file format
+            i=i+1
+            call get_command_argument(i,charac) ! the starting atom
+            read(charac,*) iatom
+            nndist=nndist_def
+            thenumber=20 ! max. # of iterations
+            do while (i+1.lt.command_argument_count())
+              i=i+1
+              call get_command_argument(i,charac)
+              select case (charac)
+              case('-cutoff')
+                i=i+1
+                call get_command_argument(i,charac2)
+                read(charac2,*) nndist
+              case("-maxiter")
+                i=i+1
+                call get_command_argument(i,charac2)
+                read(charac2,*) thenumber
+              case default
+                call error_stop('unknown option')
+              end select
+            end do
+            call get_molecule(infile,informat,iatom,nndist,atoms2,vecs,   &
+     &           thenumber)
+            natoms2=size(atoms2)
+            call getspecies(atoms2,species2)
+            nspecies2=size(species2)
+            call write_coords("MOLECULE",informat,atoms2,natoms2,         &
+     &          species2,nspecies2,vecs)
          case("--mult")
             !if (i+3.le.command_argument_count()) then
             do j=1,3
@@ -3223,6 +3277,32 @@ c---------------------------------------------------------------------
          case("--vasp_bs_pr")
                ! get projected vasp band structure from PROCAR file 
                call get_vasp_projected_bandstructure()
+         case("--vasp_BSE_trans_dens")
+             ! reads binary vasp output file WAVEDER and formatted file
+             ! BSEFATBANDS and calculates transition densities from Eq. (3) in
+             ! Körbel, "Optical signatures of defects in BiFeO$_3$, PRM 7 (10),
+             ! 104402 (2023), url:  https://link.aps.org/doi/10.1103/PhysRevMaterials.7.104402
+             ! 
+             intnum=1 ! default: lowest transition
+             if (i+1.le.command_argument_count()) then
+              i=i+1
+              call get_command_argument(i,charac)
+              read(charac,*) intnum  ! intnum= lambda (no of the BSE eigenvalue. 1=lowest transition)
+             end if
+             call vasp_BSE_trans_dens(intnum) 
+             ! 
+         case("--vasp_BSE_dens")
+             ! similar to BSE_trans_dens, but without the dipole mtrix
+             ! elements
+             ! 
+             intnum=1 ! default: lowest transition
+             if (i+1.le.command_argument_count()) then
+              i=i+1
+              call get_command_argument(i,charac)
+              read(charac,*) intnum  ! intnum= lambda (no of the BSE eigenvalue. 1=lowest transition)
+             end if
+             call vasp_BSE_dens(intnum) 
+             ! 
          case("--vasp_CHG_cut_sphere")
              ! print charge density inside and outside a sphere with
              ! requested origin and radius
@@ -3252,6 +3332,38 @@ c---------------------------------------------------------------------
               end select
             end do
             call vasp_CHG_cut_sphere(origin,radius,infile)
+            !
+         case("--vasp_CHG_cut_plane")
+             ! print charge density below and above plane through
+             ! requested origin perp. nvec
+             !
+             ! defaults:
+             vector=(/1.0d0,0.0d0,0.0d0/) 
+             origin=(/0.5d0,0.5d0,0.5d0/)
+             infile="CHGCAR"
+             do while (i+1.lt.command_argument_count()) 
+              i=i+1
+              call get_command_argument(i,charac2)
+              select case(charac2)
+                case("-origin") ! direction for averaging. 1,2,3 correspond to average perpendicular to a1, a2, a3 lattice vector
+                do j=1,3
+                  i=i+1
+                  call get_command_argument(i,charac)
+                  read(charac,*) origin(j)  ! origin of sphere that contains cluster and of inner core region
+                end do
+                case("-nvec") ! vector normal to plane in absolute coords
+                do j=1,3
+                 i=i+1
+                  call get_command_argument(i,charac)
+                  read(charac,*) vector(j)  ! normal vector of plane
+                end do
+               case("-file") ! filename (optional, default: CHGCAR)
+                 i=i+1
+                 call get_command_argument(i,infile)
+                case default 
+              end select
+            end do
+            call vasp_CHG_cut_plane(origin,vector,infile)
             !
          case("--vasp_CHG_overlap")
              ! read 2 CHGCAR files (VASP output) and calculate their
@@ -3305,6 +3417,21 @@ c---------------------------------------------------------------------
                  end select
                end do
                call get_vasp_projected_dos(intnum,intnum2,t_start,tol1)
+         case("--vasp_dos")
+               ! get vasp DOS from DOSCAR and OUTCAR file 
+               !tol=1.0E-4 ! default DOS tolerance used to detect band edges
+               !do while (i+1.lt.command_argument_count()) 
+               !  i=i+1
+               !  call get_command_argument(i,charac)
+               !  select case(charac)
+               !   case("-dos_tol")
+               !     i=i+1
+               !     call get_command_argument(i,charac2)
+               !     read(charac2,*) tol1
+               !    case default 
+               !  end select
+               !end do
+               call get_vasp_dos()
          case("--vasp_eps2_from_WAVEDER")
              ! read matrix elements and other properties from WAVEDER,
              ! OUTCAR, IBZKPT, and EIGENVAL and calculate imag(epsilon) 
@@ -3427,6 +3554,139 @@ c---------------------------------------------------------------------
      &            intvec,intvec2,intvec3,intvec4,charac3) ! nomega,omegamin,omegamax, broadening, 
                   !considered valence bands,considered conduction bands,
                   !considered spins, considered kpoints,smearing
+         case("--vasp_eps2_IPA_local_av")
+             ! read matrix elements and other properties from WAVEDER,
+             ! OUTCAR, IBZKPT, EIGENVAL, and PARCHG.NNNN.KKKK.Ri (from
+             ! DensityTool) and calculate imag(epsilon) 
+             ! in the IPA spatially projected
+             nwarn=nwarn+1
+             print fwarn,"only use without symmetries (ISYM=0 or spacegr  &
+     &oup #1 / P1 / C_1)"          
+             !
+             broad=0.025d0 ! electronic smearing
+             intnum=1001 ! number of frequencies
+             number1=0.0d0 ! minimum frequency considered
+             number2=10.0d0 ! maximum frequency considered
+             charac3='fermi' ! electronic smearing type
+             intnum2=1 ! direction that is not averaged
+             ! default: all valence bands (size(vbands)=1,vbands(1)=-1)
+             allocate(intvec(1:1)) 
+             intvec=-1
+             ! default: all conduction bands (size(cbands)=1,cbands(1)=-1)
+             allocate(intvec2(1:1)) 
+             intvec2=-1
+             ! default: all spins (size(spins)=1,spins(1)=-1)
+             allocate(intvec3(1:1)) 
+             intvec3=-1
+             allocate(intvec4(1:1)) 
+             ! default: all kpoints (size(kpoints)=1,kpoints(1)=-1)
+             intvec4=-1
+             do while (i+1.lt.command_argument_count()) 
+               i=i+1
+               call get_command_argument(i,charac)
+               select case(charac)
+                 case("-broad")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) broad
+                 case("-nomega")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum
+                 case("-omegamin")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) number1
+                 case("-omegamax")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) number2
+                 case("-vbands")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! number of valence bands
+                  deallocate(intvec)
+                  allocate(intvec(1:intnum4))
+                  do j=1,intnum4
+                    i=i+1
+                    call get_command_argument(i,charac2)
+                    read(charac2,*) intvec(j) ! valence band number
+                  end do ! j
+                 case("-vbandrange")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! first valence band to consider
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum5 ! last valence band to consider
+                  deallocate(intvec)
+                  allocate(intvec(1:intnum5-intnum4+1))
+                  do j=1,size(intvec)
+                    intvec(j)=intnum4+j-1 ! valence band number
+                  end do ! j
+                 case("-cbands")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! number of conduction bands
+                  deallocate(intvec2)
+                  allocate(intvec2(1:intnum4))
+                  do j=1,intnum4
+                    i=i+1
+                    call get_command_argument(i,charac2)
+                    read(charac2,*) intvec2(j) ! conduction band number
+                  end do ! j
+                 case("-cbandrange")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! first conduction band to consider
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum5 ! last conduction band to consider
+                  deallocate(intvec2)
+                  allocate(intvec2(1:intnum5-intnum4+1))
+                  do j=1,size(intvec2)
+                    intvec2(j)=intnum4+j-1 ! valence band number
+                  end do ! j
+                 case("-spins")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! number of spins (1 for nonspinpolarized, 2 for spin-polarized)
+                  deallocate(intvec3)
+                  allocate(intvec3(1:intnum4))
+                  do j=1,intnum4
+                    i=i+1
+                    call get_command_argument(i,charac2)
+                    read(charac2,*) intvec3(j) ! spin number
+                  end do ! j
+                 case("-kpoints")
+                  i=i+1
+                  call get_command_argument(i,charac2)
+                  read(charac2,*) intnum4 ! number of kpoints to be considered
+                  deallocate(intvec4)
+                  allocate(intvec4(1:intnum4))
+                  do j=1,intnum4
+                    i=i+1
+                    call get_command_argument(i,charac2)
+                    read(charac2,*) intvec4(j) ! kpoint number
+                  end do ! j
+                 case("-smearing")
+                  i=i+1
+                  call get_command_argument(i,charac3)
+                 case("-dir")
+                  i=i+1
+                  call get_command_argument(i,charac2) ! direction that is not averaged
+                  read(charac2,*) intnum2
+                 case("-nperp")
+                  i=i+1
+                  call get_command_argument(i,charac2) ! number of points in direction that is not averaged
+                  read(charac2,*) intnum3
+               end select
+             end do
+             call vasp_eps2_IPA_local_av(intnum,number1,number2,broad,    &
+     &           intvec,intvec2,intvec3,intvec4,charac3,intnum2,intnum3) ! nomega,omegamin,omegamax, broadening, 
+                  !considered valence bands,considered conduction bands,
+                  !considered spins, considered kpoints,smearing,
+                  !direction that is not averaged 
          case("--vasp_eps2_from_WAVEDER_LEH")
              ! read matrix elements and other properties from WAVEDER,
              ! OUTCAR, IBZKPT, and EIGENVAL and calculate imag(epsilon) 
