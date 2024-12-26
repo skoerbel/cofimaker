@@ -17,5 +17,5 @@ installation on  a linux computer:
 - type "make"
 
 # Examples
-cofima --cut <img src="https://github.com/skoerbel/misc/blob/main/CZTSe_15fu.svg" width="150" height="150"/> <img src="https://github.com/skoerbel/misc/blob/main/HYDR.ZnO.svg" width="150" height="150"/>
+cofima --cut <img src="https://github.com/skoerbel/misc/blob/main/CZTSe_15fu.svg" width="150" height="150"/> <img src="https://github.com/skoerbel/misc/blob/main/HYDR.ZnO.svg" width="250" height="150"/>
 
