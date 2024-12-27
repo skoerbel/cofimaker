@@ -23,6 +23,6 @@ cofima --vasp_bs, cofima --vasp_bs_pr: (atom-projected) electronic band structur
 <img src="https://github.com/skoerbel/cofimaker/blob/main/pictures/HYDR.ZnO_sphere.svg" width="150" height="150"/> <img src="https://github.com/skoerbel/cofimaker/blob/main/pictures/HYDR.ZnO.svg" width="200" height="200"/> <img src="https://github.com/skoerbel/cofimaker/blob/main/pictures/BS_PROJ_UP_Hf.svg" width="200" height="200"/>
 
 # Acknowledgement
-Inspiration: Pierre Hirel
-Testing: Eva M. Kalivoda, Anais Colibaba
-Name: Pavel Márton
+Inspiration: Pierre Hirel                      
+Testing: Eva M. Kalivoda, Anais Colibaba                     
+Name: Pavel Márton                    
