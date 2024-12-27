@@ -19,6 +19,6 @@ installation on  a linux computer:
 # Examples
 cofima --cut: cut surface/slab/sphere from crystal, saturate dangling bonds with H             
 <img src="https://github.com/skoerbel/cofimaker/blob/main/pictures/HYDR.ZnO_sphere.svg" width="150" height="150"/> <img src="https://github.com/skoerbel/cofimaker/blob/main/pictures/HYDR.ZnO.svg" width="300" height="200"/>                             
-cofima --vasp_bs_pr: atomc-projected electronic band structure (vasp postprocessing)
-<img src="https://github.com/skoerbel/cofimaker/blob/main/pictures/BS_PROJ_UP_Hf.svg" width="100" height="300"/>
+cofima --vasp_bs_pr: atom-projected electronic band structure (vasp postprocessing)
+<img src="https://github.com/skoerbel/cofimaker/blob/main/pictures/BS_PROJ_UP_Hf.svg" width="200" height="200"/>
 
